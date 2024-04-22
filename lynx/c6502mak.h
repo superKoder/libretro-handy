@@ -1,5 +1,6 @@
 //
-// Copyright (c) 2004 K. Wilkins
+// Copyright (c) 2004 K. Wilkins : original, for Handy emulator.
+// Copyright (c) 2024 superKoder : later improvements for Handy MP.
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from
