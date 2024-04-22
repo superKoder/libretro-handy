@@ -971,11 +971,11 @@ void retro_set_controller_port_device(unsigned, unsigned) { }
 void retro_get_system_info(struct retro_system_info *info)
 {
    memset(info, 0, sizeof(*info));
-   info->library_name     = "Handy";
+   info->library_name     = "Handy MP";
 #ifndef GIT_VERSION
 #define GIT_VERSION ""
 #endif
-   info->library_version  = HANDYVER GIT_VERSION;
+   info->library_version  = HANDY_MP_VER GIT_VERSION;
    info->need_fullpath    = true;
    info->valid_extensions = "lnx|o";
    info->block_extract = 0;

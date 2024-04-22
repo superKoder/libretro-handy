@@ -2,7 +2,7 @@ DEBUG = 0
 FRONTEND_SUPPORTS_RGB565 = 1
 FRONTEND_SUPPORTS_XRGB8888 = 0
 
-TARGET_NAME := handy
+TARGET_NAME := handy_mp
 GIT_VERSION := " $(shell git rev-parse --short HEAD || echo unknown)"
 ifneq ($(GIT_VERSION)," unknown")
 	CXXFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
