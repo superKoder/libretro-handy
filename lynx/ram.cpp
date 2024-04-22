@@ -51,7 +51,7 @@
 #include "ram.h"
 #include "handy.h"
 
-CRam::CRam(const UBYTE *gamedata, ULONG gamesize)
+CRam::CRam(CSystem &parent, const UBYTE *gamedata, ULONG gamesize) : mSystem(parent)
 {
    HOME_HEADER	header;
 
@@ -108,7 +108,7 @@ void CRam::Reset(void)
       memset(mRamData, 0x00, header.load_address);
       memcpy(mRamData+header.load_address, mFileData, data_size);
       memset(mRamData+header.load_address+data_size, 0x00, RAM_SIZE-header.load_address-data_size);
-      gCPUBootAddress=header.load_address;
+      mSystem.mCPUBootAddress=header.load_address;
    } else {
       memset(mRamData, DEFAULT_RAM_CONTENTS, RAM_SIZE);
    }

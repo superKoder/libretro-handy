@@ -193,7 +193,7 @@ class CMikie : public CLynxBase
       void	ComLynxTxLoopback(int data);
       void	ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref);
 
-      void	DisplaySetAttributes(ULONG Rotate, ULONG Format, ULONG Pitch, UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref);
+      void	DisplaySetAttributes(ULONG rotate, ULONG format, ULONG pitch, UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref);
 
       void	BlowOut(void);
 
@@ -201,9 +201,8 @@ class CMikie : public CLynxBase
       ULONG	DisplayEndOfFrame(void);
       void	AudioEndOfFrame(void);
 
-      inline void SetCPUSleep(void) {gSystemCPUSleep=TRUE;};
-      inline void ClearCPUSleep(void) {gSystemCPUSleep=FALSE;gSystemCPUSleep_Saved=FALSE;};
-
+      inline void SetCPUSleep(void);
+      inline void ClearCPUSleep(void);
 
       void Update(void);
       inline void UpdateSound(void);
@@ -415,8 +414,8 @@ class CMikie : public CLynxBase
       ULONG		mUART_TX_CALLBACK_OBJECT;
 
       int			mUART_Rx_input_queue[UART_MAX_RX_QUEUE];
-      unsigned int mUART_Rx_input_ptr;
-      unsigned int mUART_Rx_output_ptr;
+      unsigned int mUART_Rx_input_idx;
+      unsigned int mUART_Rx_output_idx;
       int			mUART_Rx_waiting;
       int			mUART_Rx_framing_error;
       int			mUART_Rx_overun_error;
@@ -437,6 +436,20 @@ class CMikie : public CLynxBase
       ULONG		mDisplayPitch;
       UBYTE*		(*mpDisplayCallback)(ULONG objref);
       ULONG		mDisplayCallbackObject;
+
+
+      // State within GetLfsrNext()
+   
+      ULONG mSwitches = 0;
+      ULONG mLfsr = 0;
+      ULONG mNext = 0;
+      ULONG mSwLoop = 0;
+      ULONG mResult = 0;
+
+      // State within UpdateSound()
+
+      int mLastSampleL = 0;
+      int mLastSampleR = 0;
 };
 
 

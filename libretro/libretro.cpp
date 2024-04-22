@@ -598,7 +598,7 @@ static UBYTE* lynx_display_callback(ULONG objref)
     * is only called once per retro_run(). */
    if (!frame_available)
    {
-      if (gSkipFrame)
+      if (lynx->mSkipFrame)
          video_cb(NULL, lynx_width, lynx_height,
                RETRO_LYNX_WIDTH * RETRO_PIX_BYTES);
       else
@@ -636,12 +636,12 @@ static UBYTE* lynx_display_callback(ULONG objref)
       }
 
       frame_available = true;
-      /* Must unset gSkipFrame here since the next
+      /* Must unset mSkipFrame here since the next
        * frame may be (partially) drawn before the
        * current retro_run() returns, and we will not
        * know if this frame is needed until the *next*
        * call of retro_run()... */
-      gSkipFrame = 0;
+      lynx->mSkipFrame = 0;
    }
 
    return (UBYTE*)framebuffer;
@@ -1029,33 +1029,33 @@ void retro_run(void)
    lynx_rotation_button_down = select_button;
 
    /* Check whether current frame should be skipped
-    * > Note: if gSkipFrame is already set, then it
+    * > Note: if mSkipFrame is already set, then it
     *   means a frameskip was requested on the last
     *   call of retro_run() but no end of frame
     *   event occurred. We must therefore keep
-    *   gSkipFrame latched on, since any partial frame
+    *   mSkipFrame latched on, since any partial frame
     *   from the previous retro_run() will be incomplete */
    if ((frameskip_type > 0) &&
-       !gSkipFrame &&
+       !lynx->mSkipFrame &&
        retro_audio_buff_active)
    {
       switch (frameskip_type)
       {
          case 1: /* auto */
-            gSkipFrame = retro_audio_buff_underrun ? 1 : 0;
+            lynx->mSkipFrame = retro_audio_buff_underrun ? 1 : 0;
             break;
          case 2: /* manual */
-            gSkipFrame = (retro_audio_buff_occupancy < frameskip_threshold) ? 1 : 0;
+            lynx->mSkipFrame = (retro_audio_buff_occupancy < frameskip_threshold) ? 1 : 0;
             break;
          default:
-            gSkipFrame = 0;
+            lynx->mSkipFrame = 0;
             break;
       }
 
-      if (!gSkipFrame ||
+      if (!lynx->mSkipFrame ||
           (frameskip_counter >= FRAMESKIP_MAX))
       {
-         gSkipFrame        = 0;
+         lynx->mSkipFrame        = 0;
          frameskip_counter = 0;
       }
       else
@@ -1077,10 +1077,10 @@ void retro_run(void)
       retro_refresh_rate_updated = false;
    }
 
-   gLastRunCycleCount = gSystemCycleCount;
+   lynx->mLastRunCycleCount = lynx->mSystemCycleCount;
    frame_available = false;
 
-   while (gSystemCycleCount - gLastRunCycleCount < retro_cycles_per_frame) {
+   while (lynx->mSystemCycleCount - lynx->mLastRunCycleCount < retro_cycles_per_frame) {
       lynx->Update();
 
       for (int lcv = 1; lcv < retro_overclock; lcv++)
@@ -1095,9 +1095,9 @@ void retro_run(void)
 
    lynx->FetchAudioSamples();
 
-   /* Divide gAudioBufferPointer by number of channels */
-   audio_batch_cb(soundBuffer, gAudioBufferPointer >> 1);
-   gAudioBufferPointer = 0;
+   /* Divide mAudioBufferPointer by number of channels */
+   audio_batch_cb(soundBuffer, lynx->mAudioBufferPointer >> 1);
+   lynx->mAudioBufferPointer = 0;
 }
 
 size_t retro_serialize_size(void)
@@ -1256,8 +1256,8 @@ bool retro_load_game(const struct retro_game_info *info)
 
    lynx          = new CSystem(content_path, content_data, content_size,
          bios_file, !bios_found, eeprom_file);
-   gAudioEnabled = true;
-   soundBuffer   = (int16_t *)&gAudioBuffer;
+   lynx->mAudioEnabled = true;
+   soundBuffer   = (int16_t *)&lynx->mAudioBuffer;
    btn_map       = btn_map_no_rot;
 
    /* Apply initial rotation
@@ -1267,7 +1267,7 @@ bool retro_load_game(const struct retro_game_info *info)
    lynx_width  = lynx_width_next;
    lynx_height = lynx_height_next;
 
-   gSkipFrame        = 0;
+   lynx->mSkipFrame        = 0;
    initialized       = true;
    video_out_enabled = true;
 

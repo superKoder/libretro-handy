@@ -684,19 +684,10 @@ ULONG CSusie::PaintSprites(void)
 
             // Is this quad to be rendered ??
 
-            static int pixel_height=0;
-            static int pixel_width=0;
-            static int pixel=0;
-            static int hoff=0,voff=0;
-            static int hloop=0,vloop=0;
-            static bool onscreen=0;
-            static int vquadoff=0;
-            static int hquadoff=0;
-
             if(render)
             {
                // Set the vertical position & offset
-               voff=(int16_t)mVPOSSTRT.Word-screen_v_start;
+               mOffV=(int16_t)mVPOSSTRT.Word-screen_v_start;
 
                // Zero the stretch,tilt & acum values
                mTILTACUM.Word=0;
@@ -710,13 +701,13 @@ ULONG CSusie::PaintSprites(void)
                // get offset by 1 pixel in the other direction, this
                // fixes the squashed look on the multi-quad sprites.
                //					if(vsign==-1 && loop>0) voff+=vsign;
-               if(loop==0)	vquadoff=vsign;
-               if(vsign!=vquadoff) voff+=vsign;
+               if(loop==0)	mQuadOffV=vsign;
+               if(vsign!=mQuadOffV) mOffV+=vsign;
 
                for(;;) {
                   // Vertical scaling is done here
                   mVSIZACUM.Word+=mSPRVSIZ.Word;
-                  pixel_height=mVSIZACUM.Byte.High;
+                  mPixelHeight=mVSIZACUM.Byte.High;
                   mVSIZACUM.Byte.High=0;
 
                   // Update the next data line pointer and initialise our line
@@ -734,17 +725,17 @@ ULONG CSusie::PaintSprites(void)
                   }
 
                   // Draw one horizontal line of the sprite
-                  for(vloop=0;vloop<pixel_height;vloop++) {
+                  for(mLoopV=0;mLoopV<mPixelHeight;mLoopV++) {
                      // Early bailout if the sprite has moved off screen, terminate quad
-                     if(vsign==1 && voff>=SCREEN_HEIGHT)	break;
-                     if(vsign==-1 && voff<0)	break;
+                     if(vsign==1 && mOffV>=SCREEN_HEIGHT)	break;
+                     if(vsign==-1 && mOffV<0)	break;
 
                      // Only allow the draw to take place if the line is visible
-                     if(voff>=0 && voff<SCREEN_HEIGHT) {
+                     if(mOffV>=0 && mOffV<SCREEN_HEIGHT) {
                         // Work out the horizontal pixel start position, start + tilt
                         mHPOSSTRT.Word+=((int16_t)mTILTACUM.Word>>8);
                         mTILTACUM.Byte.High=0;
-                        hoff=(int)((int16_t)mHPOSSTRT.Word)-screen_h_start;
+                        mOffH=(int)((int16_t)mHPOSSTRT.Word)-screen_h_start;
 
                         // Force the horizontal scaling accumulator (Alpine Games protection)
                         mHSIZACUM.Word=mHSIZOFF.Word;
@@ -754,34 +745,34 @@ ULONG CSusie::PaintSprites(void)
                         // get offset by 1 pixel in the other direction, this
                         // fixes the squashed look on the multi-quad sprites.
                         //								if(hsign==-1 && loop>0) hoff+=hsign;
-                        if(loop==0)	hquadoff=hsign;
-                        if(hsign!=hquadoff) hoff+=hsign;
+                        if(loop==0)	mQuadOffH=hsign;
+                        if(hsign!=mQuadOffH) mOffH+=hsign;
 
                         // Initialise our line
-                        LineInit(voff);
-                        onscreen=FALSE;
+                        LineInit(mOffV);
+                        mIsOnscreen=FALSE;
 
                         // Now render an individual destination line
-                        while((pixel=LineGetPixel())!=LINE_END) {
+                        while((mPixel=LineGetPixel())!=LINE_END) {
                            // This is allowed to update every pixel
                            mHSIZACUM.Word+=mSPRHSIZ.Word;
-                           pixel_width=mHSIZACUM.Byte.High;
+                           mPixelWidth=mHSIZACUM.Byte.High;
                            mHSIZACUM.Byte.High=0;
 
-                           for(hloop=0; hloop<pixel_width; hloop++) {
+                           for(mLoopH=0; mLoopH<mPixelWidth; mLoopH++) {
                               // Draw if onscreen but break loop on transition to offscreen
-                              if(hoff>=0 && hoff<SCREEN_WIDTH) {
-                                 ProcessPixel(hoff,pixel);
-                                 onscreen = TRUE;
+                              if(mOffH>=0 && mOffH<SCREEN_WIDTH) {
+                                 ProcessPixel(mOffH,mPixel);
+                                 mIsOnscreen = TRUE;
                                  everonscreen=TRUE;
                               } else {
-                                 if(onscreen) break;
+                                 if(mIsOnscreen) break;
                               }
-                              hoff+=hsign;
+                              mOffH+=hsign;
                            }
                         }
                      }
-                     voff+=vsign;
+                     mOffV+=vsign;
 
                      // For every destination line we can modify SPRHSIZ & SPRVSIZ & TILTACUM
                      if(enable_stretch) {
@@ -795,7 +786,7 @@ ULONG CSusie::PaintSprites(void)
                   }
                   // According to the docs this increments per dest line
                   // but only gets set when the source line is read
-                  if(mSPRSYS_VStretch) mSPRVSIZ.Word+=mSTRETCH.Word*pixel_height;
+                  if(mSPRSYS_VStretch) mSPRVSIZ.Word+=mSTRETCH.Word*mPixelHeight;
 
                   // Update the line start for our next run thru the loop
                   mSPRDLINE.Word+=mSPRDOFF.Word;
@@ -856,10 +847,10 @@ ULONG CSusie::PaintSprites(void)
          }
 
          // Perform Sprite debugging if required, single step on sprite draw
-         if(gSingleStepModeSprites) {
+         if(mSystem.mSingleStepModeSprites) {
             char message[256];
             sprintf(message,"CSusie:PaintSprites() - Rendered Sprite %03d",sprcount);
-            if(!gError->Warning(message)) gSingleStepModeSprites=0;
+            if(!mSystem.mError->Warning(message)) mSystem.mSingleStepModeSprites=0;
          }
       }
 
@@ -878,9 +869,9 @@ ULONG CSusie::PaintSprites(void)
       // Check sprcount for looping SCB, random large number chosen
       if(sprcount>4096) {
          // Stop the system, otherwise we may just come straight back in.....
-         gSystemHalt=TRUE;
+         mSystem.mSystemHalt=TRUE;
          // Display warning message
-         gError->Warning("CSusie:PaintSprites(): Single draw sprite limit exceeded (>4096). The SCB is most likely looped back on itself. Reset/Exit is recommended");
+         mSystem.mError->Warning("CSusie:PaintSprites(): Single draw sprite limit exceeded (>4096). The SCB is most likely looped back on itself. Reset/Exit is recommended");
          // Signal error to the caller
          return 0;
       }
@@ -1198,7 +1189,7 @@ inline ULONG CSusie::LineInit(ULONG voff)
    // Set the line base address for use in the calls to pixel painting
 
    if(voff>101) {
-      gError->Warning("CSusie::LineInit() Out of bounds (voff)");
+      mSystem.mError->Warning("CSusie::LineInit() Out of bounds (voff)");
       voff=0;
    }
 
@@ -1851,9 +1842,9 @@ UBYTE CSusie::Peek(ULONG addr)
       case (SPRSYS&0xff):
          retval=0x0000;
          //	retval+=(mSPRSYS_Status)?0x0001:0x0000;
-         // Use gSystemCPUSleep to signal the status instead, if we are asleep then
+         // Use mSystem.mSystemCPUSleep to signal the status instead, if we are asleep then
          // we must be rendering sprites
-         retval+=(gSystemCPUSleep)?0x0001:0x0000;
+         retval+=(mSystem.mSystemCPUSleep)?0x0001:0x0000;
          retval+=(mSPRSYS_StopOnCurrent)?0x0002:0x0000;
          retval+=(mSPRSYS_UnsafeAccess)?0x0004:0x0000;
          retval+=(mSPRSYS_LeftHand)?0x0008:0x0000;

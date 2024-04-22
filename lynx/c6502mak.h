@@ -739,7 +739,7 @@
 
 #define	xSTP()\
 {\
-	gSystemCPUSleep=TRUE;\
+	mSystem.mSystemCPUSleep=TRUE;\
 }
 
 #define	xSTX()\
@@ -832,6 +832,6 @@
 
 #define	xWAI()\
 {\
-	gSystemCPUSleep=TRUE;\
+	mSystem.mSystemCPUSleep=TRUE;\
 }
 

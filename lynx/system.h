@@ -52,6 +52,8 @@
 #include "machine.h"
 #include "errorinterface.h"
 
+class C65C02;  // fwd decl
+
 #define HANDY_SYSTEM_FREQ                       16000000
 #define HANDY_TIMER_FREQ                        20
 #define HANDY_AUDIO_SAMPLE_FREQ                 48000
@@ -69,70 +71,8 @@
 
 #define HANDY_SCREEN_WIDTH   160
 #define HANDY_SCREEN_HEIGHT  102
-//
-// Define the global variable list
-//
 
-#ifdef SYSTEM_CPP
-ULONG   gSystemCycleCount=0;
-ULONG   gLastRunCycleCount=0;
-ULONG   gNextTimerEvent=0;
-ULONG   gCPUWakeupTime=0;
-ULONG   gIRQEntryCycle=0;
-ULONG   gCPUBootAddress=0;
-ULONG   gBreakpointHit=FALSE;
-ULONG   gSingleStepMode=FALSE;
-ULONG   gSingleStepModeSprites=FALSE;
-ULONG   gSystemIRQ=FALSE;
-ULONG   gSystemNMI=FALSE;
-ULONG   gSystemCPUSleep=FALSE;
-ULONG   gSystemCPUSleep_Saved=FALSE;
-ULONG   gSystemHalt=FALSE;
-ULONG   gThrottleMaxPercentage=100;
-ULONG   gThrottleLastTimerCount=0;
-ULONG   gThrottleNextCycleCheckpoint=0;
-
-volatile ULONG gTimerCount=0;
-
-ULONG   gAudioEnabled=FALSE;
-UBYTE   gAudioBuffer[HANDY_AUDIO_BUFFER_SIZE];
-ULONG   gAudioBufferPointer=0;
-ULONG   gAudioLastUpdateCycle=0;
-
-UBYTE   gSkipFrame=FALSE;
-
-CErrorInterface *gError=NULL;
-#else
-
-extern ULONG    gSystemCycleCount;
-extern ULONG    gLastRunCycleCount;
-extern ULONG    gNextTimerEvent;
-extern ULONG    gCPUWakeupTime;
-extern ULONG    gIRQEntryCycle;
-extern ULONG    gCPUBootAddress;
-extern ULONG    gBreakpointHit;
-extern ULONG    gSingleStepMode;
-extern ULONG    gSingleStepModeSprites;
-extern ULONG    gSystemIRQ;
-extern ULONG    gSystemNMI;
-extern ULONG    gSystemCPUSleep;
-extern ULONG    gSystemCPUSleep_Saved;
-extern ULONG    gSystemHalt;
-extern ULONG    gThrottleMaxPercentage;
-extern ULONG    gThrottleLastTimerCount;
-extern ULONG    gThrottleNextCycleCheckpoint;
-
-extern volatile ULONG gTimerCount;
-
-extern ULONG    gAudioEnabled;
-extern UBYTE    gAudioBuffer[HANDY_AUDIO_BUFFER_SIZE];
-extern ULONG    gAudioBufferPointer;
-extern ULONG    gAudioLastUpdateCycle;
-
-extern UBYTE    gSkipFrame;
-
-extern CErrorInterface *gError;
-#endif
+#include <functional>
 
 typedef struct lssfile
 {
@@ -151,9 +91,8 @@ int lss_printf(LSS_FILE *fp, const char *str);
 // as many classes look for articles from the interfaces to
 // allow compilation
 
-#include "sysbase.h"
-
 class CSystem;
+struct C6502_REGS;   // fwd decl
 
 //
 // Now pull in the parts that build the system
@@ -179,7 +118,7 @@ class CSystem;
 #define LSS_VERSION_OLD "LSS2"
 #define LSS_VERSION     "LSS3"
 
-class CSystem : public CSystemBase
+class CSystem
 {
    public:
       CSystem(const char *gamefile,
@@ -190,6 +129,7 @@ class CSystem : public CSystemBase
               const char *eepromfile);
       ~CSystem();
     void SaveEEPROM(void);
+      uint8_t ID = 0;
 
    public:
       void HLE_BIOS_FE00(void);
@@ -201,30 +141,9 @@ class CSystem : public CSystemBase
       bool ContextSave(LSS_FILE *fp);
       bool ContextLoad(LSS_FILE *fp);
 
-      inline void Update(void)
-      {
-         // Only update if there is a predicted timer event
-         if(gSystemCycleCount>=gNextTimerEvent)
-            mMikie->Update();
-         // Step the processor through 1 instruction
-         mCpu->Update();
+      void Update(void);
 
-         // If the CPU is asleep then skip to the next timer event
-         if(gSystemCPUSleep)
-            gSystemCycleCount=gNextTimerEvent;
-      }
-
-      inline void Overclock(void)
-      {
-         if(gSystemCPUSleep) return;
-
-         ULONG temp = gSystemCycleCount;
-
-         // Step the processor through 1 instruction
-         mCpu->Update();
-
-         gSystemCycleCount = temp;
-      }
+      void Overclock(void);
 
       inline void FetchAudioSamples(void)
       {
@@ -282,16 +201,16 @@ class CSystem : public CSystemBase
 
       // Low level CPU access
 
-      void   SetRegs(C6502_REGS &regs) {mCpu->SetRegs(regs);};
-      void   GetRegs(C6502_REGS &regs) {mCpu->GetRegs(regs);};
+      void   SetRegs(C6502_REGS &regs);
+      void   GetRegs(C6502_REGS &regs);
 
       // Mikey system interfacing
 
-      void   DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref) { mMikie->DisplaySetAttributes(Rotate,Format,Pitch,DisplayCallback,objref); };
+      void   DisplaySetAttributes(ULONG rotate,ULONG format,ULONG pitch, UBYTE* (*callback)(ULONG objref),ULONG objref) { mMikie->DisplaySetAttributes(rotate, format, pitch, callback, objref); };
 
       void   ComLynxCable(int status) { mMikie->ComLynxCable(status); };
       void   ComLynxRxData(int data)  { mMikie->ComLynxRxData(data); };
-      void   ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref) { mMikie->ComLynxTxCallback(function,objref); };
+      void   ComLynxTxCallback(void (*function)(int data, ULONG objref), ULONG objref) { mMikie->ComLynxTxCallback(function, objref); };
 
       // Suzy system interfacing
 
@@ -317,6 +236,39 @@ class CSystem : public CSystemBase
       CEEPROM       *mEEPROM;
 
       ULONG         mFileType;
+
+
+   public: // ex-globals
+      ULONG   mSystemCycleCount=0;
+      ULONG   mLastRunCycleCount=0;
+      ULONG   mNextTimerEvent=0;
+      ULONG   mCPUWakeupTime=0;
+      ULONG   mIRQEntryCycle=0;
+      ULONG   mCPUBootAddress=0;
+      ULONG   mSingleStepMode=FALSE;
+      ULONG   mSingleStepModeSprites=FALSE;  // not actually used?
+      ULONG   mSystemIRQ=FALSE;
+      ULONG   mSystemNMI=FALSE;
+      ULONG   mSystemCPUSleep=FALSE;
+      ULONG   mSystemCPUSleep_Saved=FALSE;   // not actually used?
+      ULONG   mSystemHalt=FALSE;
+      ULONG   mThrottleNextCycleCheckpoint=0;
+
+      ULONG   mAudioEnabled=FALSE;
+      UBYTE   mAudioBuffer[HANDY_AUDIO_BUFFER_SIZE];
+      ULONG   mAudioBufferPointer=0;
+      ULONG   mAudioLastUpdateCycle=0;
+
+      UBYTE   mSkipFrame=FALSE;
+
+      CErrorInterface *mError=NULL;
+
+   private:    // ex-globals
+      ULONG   mBreakpointHit=FALSE;
+      ULONG   mThrottleMaxPercentage=100;
+      ULONG   mThrottleLastTimerCount=0;
+
+      volatile ULONG mTimerCount=0;
 };
 
 #endif

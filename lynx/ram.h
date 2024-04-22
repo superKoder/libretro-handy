@@ -63,7 +63,7 @@ class CRam : public CLynxBase
    // Function members
 
    public:
-      CRam(const UBYTE *gamedata, ULONG gamesize);
+      CRam(CSystem &parent, const UBYTE *gamedata, ULONG gamesize);
       ~CRam();
 
    public:
@@ -83,6 +83,7 @@ class CRam : public CLynxBase
       // Data members
 
    private:
+      CSystem &mSystem;
       UBYTE	mRamData[RAM_SIZE];
       UBYTE	*mFileData;
       ULONG	mFileSize;

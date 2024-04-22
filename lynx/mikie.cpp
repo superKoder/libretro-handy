@@ -55,43 +55,58 @@
 #include "lynxdef.h"
 #include "handy.h"
 
+inline void CMikie::SetCPUSleep(void) 
+{ 
+   mSystem.mSystemCPUSleep = TRUE; 
+};
+
+inline void CMikie::ClearCPUSleep(void)
+{
+   mSystem.mSystemCPUSleep = FALSE;
+   mSystem.mSystemCPUSleep_Saved = FALSE;
+};
+
 void CMikie::BlowOut(void)
 {
    char addr[100];
    C6502_REGS regs;
    mSystem.GetRegs(regs);
-   sprintf(addr,"Runtime Error - System Halted\nCMikie::Poke() - Read/Write to counter clocks at PC=$%04x.",regs.PC);
-   if(gError) gError->Warning(addr);
-   gSystemHalt=TRUE;
+   sprintf(addr, "Runtime Error - System Halted\nCMikie::Poke() - Read/Write to counter clocks at PC=$%04x.", regs.PC);
+   if (mSystem.mError)
+      mSystem.mError->Warning(addr);
+   mSystem.mSystemHalt = TRUE;
 }
 
-
-   CMikie::CMikie(CSystem& parent)
-:mSystem(parent)
+CMikie::CMikie(CSystem &parent)
+    : mSystem(parent)
 {
 
-   mpDisplayBits=NULL;
-   mpDisplayCurrent=NULL;
-   mpRamPointer=NULL;
+   mpDisplayBits = NULL;
+   mpDisplayCurrent = NULL;
+   mpRamPointer = NULL;
 
-   mDisplayRotate=MIKIE_BAD_MODE;
-   mDisplayFormat=MIKIE_PIXEL_FORMAT_16BPP_555;
-   mpDisplayCallback=NULL;
-   mDisplayCallbackObject=0;
+   mDisplayRotate = MIKIE_BAD_MODE;
+   mDisplayFormat = MIKIE_PIXEL_FORMAT_16BPP_555;
+   mpDisplayCallback = NULL;
+   mDisplayCallbackObject = 0;
 
-   mUART_CABLE_PRESENT=FALSE;
-   mpUART_TX_CALLBACK=NULL;
+   mUART_CABLE_PRESENT = FALSE;
+   mpUART_TX_CALLBACK = nullptr;
 
    int loop;
-   for(loop=0;loop<16;loop++) mPalette[loop].Index=loop;
-   for(loop=0;loop<4096;loop++) mColourMap[loop]=0;
+   for (loop = 0; loop < 16; loop++) {
+      mPalette[loop].Index = loop;
+   }
+   for (loop = 0; loop < 4096; loop++) {
+      mColourMap[loop] = 0;
+   }
 
    mikbuf.set_sample_rate(HANDY_AUDIO_SAMPLE_FREQ, 60);
    mikbuf.clock_rate(HANDY_SYSTEM_FREQ / 4);
    mikbuf.bass_freq(60);
    miksynth.volume(0.50);
    miksynth.treble_eq(0);
-	
+
    Reset();
 }
 
@@ -99,229 +114,228 @@ CMikie::~CMikie()
 {
 }
 
-
 void CMikie::Reset(void)
 {
-   mAudioInputComparator=FALSE;	// Initialises to unknown
-   mDisplayAddress=0x00;			// Initialises to unknown
-   mLynxLine=0;
-   mLynxLineDMACounter=0;
-   mLynxAddr=0;
+   mAudioInputComparator = FALSE; // Initialises to unknown
+   mDisplayAddress = 0x00;        // Initialises to unknown
+   mLynxLine = 0;
+   mLynxLineDMACounter = 0;
+   mLynxAddr = 0;
 
-   mTimerStatusFlags=0x00;		// Initialises to ZERO, i.e No IRQ's
-   mTimerInterruptMask=0x00;
+   mTimerStatusFlags = 0x00; // Initialises to ZERO, i.e No IRQ's
+   mTimerInterruptMask = 0x00;
 
-   mpRamPointer=mSystem.GetRamPointer();	// Fetch pointer to system RAM
+   mpRamPointer = mSystem.GetRamPointer(); // Fetch pointer to system RAM
 
-   mTIM_0_BKUP=0;
-   mTIM_0_ENABLE_RELOAD=0;
-   mTIM_0_ENABLE_COUNT=0;
-   mTIM_0_LINKING=0;
-   mTIM_0_CURRENT=0;
-   mTIM_0_TIMER_DONE=0;
-   mTIM_0_LAST_CLOCK=0;
-   mTIM_0_BORROW_IN=0;
-   mTIM_0_BORROW_OUT=0;
-   mTIM_0_LAST_LINK_CARRY=0;
-   mTIM_0_LAST_COUNT=0;
+   mTIM_0_BKUP = 0;
+   mTIM_0_ENABLE_RELOAD = 0;
+   mTIM_0_ENABLE_COUNT = 0;
+   mTIM_0_LINKING = 0;
+   mTIM_0_CURRENT = 0;
+   mTIM_0_TIMER_DONE = 0;
+   mTIM_0_LAST_CLOCK = 0;
+   mTIM_0_BORROW_IN = 0;
+   mTIM_0_BORROW_OUT = 0;
+   mTIM_0_LAST_LINK_CARRY = 0;
+   mTIM_0_LAST_COUNT = 0;
 
-   mTIM_1_BKUP=0;
-   mTIM_1_ENABLE_RELOAD=0;
-   mTIM_1_ENABLE_COUNT=0;
-   mTIM_1_LINKING=0;
-   mTIM_1_CURRENT=0;
-   mTIM_1_TIMER_DONE=0;
-   mTIM_1_LAST_CLOCK=0;
-   mTIM_1_BORROW_IN=0;
-   mTIM_1_BORROW_OUT=0;
-   mTIM_1_LAST_LINK_CARRY=0;
-   mTIM_1_LAST_COUNT=0;
+   mTIM_1_BKUP = 0;
+   mTIM_1_ENABLE_RELOAD = 0;
+   mTIM_1_ENABLE_COUNT = 0;
+   mTIM_1_LINKING = 0;
+   mTIM_1_CURRENT = 0;
+   mTIM_1_TIMER_DONE = 0;
+   mTIM_1_LAST_CLOCK = 0;
+   mTIM_1_BORROW_IN = 0;
+   mTIM_1_BORROW_OUT = 0;
+   mTIM_1_LAST_LINK_CARRY = 0;
+   mTIM_1_LAST_COUNT = 0;
 
-   mTIM_2_BKUP=0;
-   mTIM_2_ENABLE_RELOAD=0;
-   mTIM_2_ENABLE_COUNT=0;
-   mTIM_2_LINKING=0;
-   mTIM_2_CURRENT=0;
-   mTIM_2_TIMER_DONE=0;
-   mTIM_2_LAST_CLOCK=0;
-   mTIM_2_BORROW_IN=0;
-   mTIM_2_BORROW_OUT=0;
-   mTIM_2_LAST_LINK_CARRY=0;
-   mTIM_2_LAST_COUNT=0;
+   mTIM_2_BKUP = 0;
+   mTIM_2_ENABLE_RELOAD = 0;
+   mTIM_2_ENABLE_COUNT = 0;
+   mTIM_2_LINKING = 0;
+   mTIM_2_CURRENT = 0;
+   mTIM_2_TIMER_DONE = 0;
+   mTIM_2_LAST_CLOCK = 0;
+   mTIM_2_BORROW_IN = 0;
+   mTIM_2_BORROW_OUT = 0;
+   mTIM_2_LAST_LINK_CARRY = 0;
+   mTIM_2_LAST_COUNT = 0;
 
-   mTIM_3_BKUP=0;
-   mTIM_3_ENABLE_RELOAD=0;
-   mTIM_3_ENABLE_COUNT=0;
-   mTIM_3_LINKING=0;
-   mTIM_3_CURRENT=0;
-   mTIM_3_TIMER_DONE=0;
-   mTIM_3_LAST_CLOCK=0;
-   mTIM_3_BORROW_IN=0;
-   mTIM_3_BORROW_OUT=0;
-   mTIM_3_LAST_LINK_CARRY=0;
-   mTIM_3_LAST_COUNT=0;
+   mTIM_3_BKUP = 0;
+   mTIM_3_ENABLE_RELOAD = 0;
+   mTIM_3_ENABLE_COUNT = 0;
+   mTIM_3_LINKING = 0;
+   mTIM_3_CURRENT = 0;
+   mTIM_3_TIMER_DONE = 0;
+   mTIM_3_LAST_CLOCK = 0;
+   mTIM_3_BORROW_IN = 0;
+   mTIM_3_BORROW_OUT = 0;
+   mTIM_3_LAST_LINK_CARRY = 0;
+   mTIM_3_LAST_COUNT = 0;
 
-   mTIM_4_BKUP=0;
-   mTIM_4_ENABLE_RELOAD=0;
-   mTIM_4_ENABLE_COUNT=0;
-   mTIM_4_LINKING=0;
-   mTIM_4_CURRENT=0;
-   mTIM_4_TIMER_DONE=0;
-   mTIM_4_LAST_CLOCK=0;
-   mTIM_4_BORROW_IN=0;
-   mTIM_4_BORROW_OUT=0;
-   mTIM_4_LAST_LINK_CARRY=0;
-   mTIM_4_LAST_COUNT=0;
+   mTIM_4_BKUP = 0;
+   mTIM_4_ENABLE_RELOAD = 0;
+   mTIM_4_ENABLE_COUNT = 0;
+   mTIM_4_LINKING = 0;
+   mTIM_4_CURRENT = 0;
+   mTIM_4_TIMER_DONE = 0;
+   mTIM_4_LAST_CLOCK = 0;
+   mTIM_4_BORROW_IN = 0;
+   mTIM_4_BORROW_OUT = 0;
+   mTIM_4_LAST_LINK_CARRY = 0;
+   mTIM_4_LAST_COUNT = 0;
 
-   mTIM_5_BKUP=0;
-   mTIM_5_ENABLE_RELOAD=0;
-   mTIM_5_ENABLE_COUNT=0;
-   mTIM_5_LINKING=0;
-   mTIM_5_CURRENT=0;
-   mTIM_5_TIMER_DONE=0;
-   mTIM_5_LAST_CLOCK=0;
-   mTIM_5_BORROW_IN=0;
-   mTIM_5_BORROW_OUT=0;
-   mTIM_5_LAST_LINK_CARRY=0;
-   mTIM_5_LAST_COUNT=0;
+   mTIM_5_BKUP = 0;
+   mTIM_5_ENABLE_RELOAD = 0;
+   mTIM_5_ENABLE_COUNT = 0;
+   mTIM_5_LINKING = 0;
+   mTIM_5_CURRENT = 0;
+   mTIM_5_TIMER_DONE = 0;
+   mTIM_5_LAST_CLOCK = 0;
+   mTIM_5_BORROW_IN = 0;
+   mTIM_5_BORROW_OUT = 0;
+   mTIM_5_LAST_LINK_CARRY = 0;
+   mTIM_5_LAST_COUNT = 0;
 
-   mTIM_6_BKUP=0;
-   mTIM_6_ENABLE_RELOAD=0;
-   mTIM_6_ENABLE_COUNT=0;
-   mTIM_6_LINKING=0;
-   mTIM_6_CURRENT=0;
-   mTIM_6_TIMER_DONE=0;
-   mTIM_6_LAST_CLOCK=0;
-   mTIM_6_BORROW_IN=0;
-   mTIM_6_BORROW_OUT=0;
-   mTIM_6_LAST_LINK_CARRY=0;
-   mTIM_6_LAST_COUNT=0;
+   mTIM_6_BKUP = 0;
+   mTIM_6_ENABLE_RELOAD = 0;
+   mTIM_6_ENABLE_COUNT = 0;
+   mTIM_6_LINKING = 0;
+   mTIM_6_CURRENT = 0;
+   mTIM_6_TIMER_DONE = 0;
+   mTIM_6_LAST_CLOCK = 0;
+   mTIM_6_BORROW_IN = 0;
+   mTIM_6_BORROW_OUT = 0;
+   mTIM_6_LAST_LINK_CARRY = 0;
+   mTIM_6_LAST_COUNT = 0;
 
-   mTIM_7_BKUP=0;
-   mTIM_7_ENABLE_RELOAD=0;
-   mTIM_7_ENABLE_COUNT=0;
-   mTIM_7_LINKING=0;
-   mTIM_7_CURRENT=0;
-   mTIM_7_TIMER_DONE=0;
-   mTIM_7_LAST_CLOCK=0;
-   mTIM_7_BORROW_IN=0;
-   mTIM_7_BORROW_OUT=0;
-   mTIM_7_LAST_LINK_CARRY=0;
-   mTIM_7_LAST_COUNT=0;
+   mTIM_7_BKUP = 0;
+   mTIM_7_ENABLE_RELOAD = 0;
+   mTIM_7_ENABLE_COUNT = 0;
+   mTIM_7_LINKING = 0;
+   mTIM_7_CURRENT = 0;
+   mTIM_7_TIMER_DONE = 0;
+   mTIM_7_LAST_CLOCK = 0;
+   mTIM_7_BORROW_IN = 0;
+   mTIM_7_BORROW_OUT = 0;
+   mTIM_7_LAST_LINK_CARRY = 0;
+   mTIM_7_LAST_COUNT = 0;
 
-   mAUDIO_0_BKUP=0;
-   mAUDIO_0_ENABLE_RELOAD=0;
-   mAUDIO_0_ENABLE_COUNT=0;
-   mAUDIO_0_LINKING=0;
-   mAUDIO_0_CURRENT=0;
-   mAUDIO_0_TIMER_DONE=0;
-   mAUDIO_0_LAST_CLOCK=0;
-   mAUDIO_0_BORROW_IN=0;
-   mAUDIO_0_BORROW_OUT=0;
-   mAUDIO_0_LAST_LINK_CARRY=0;
-   mAUDIO_0_LAST_COUNT=0;
-   mAUDIO_0_VOLUME=0;
-   mAUDIO_OUTPUT[0]=0;
-   mAUDIO_0_INTEGRATE_ENABLE=0;
-   mAUDIO_0_WAVESHAPER=0;
+   mAUDIO_0_BKUP = 0;
+   mAUDIO_0_ENABLE_RELOAD = 0;
+   mAUDIO_0_ENABLE_COUNT = 0;
+   mAUDIO_0_LINKING = 0;
+   mAUDIO_0_CURRENT = 0;
+   mAUDIO_0_TIMER_DONE = 0;
+   mAUDIO_0_LAST_CLOCK = 0;
+   mAUDIO_0_BORROW_IN = 0;
+   mAUDIO_0_BORROW_OUT = 0;
+   mAUDIO_0_LAST_LINK_CARRY = 0;
+   mAUDIO_0_LAST_COUNT = 0;
+   mAUDIO_0_VOLUME = 0;
+   mAUDIO_OUTPUT[0] = 0;
+   mAUDIO_0_INTEGRATE_ENABLE = 0;
+   mAUDIO_0_WAVESHAPER = 0;
 
-   mAUDIO_1_BKUP=0;
-   mAUDIO_1_ENABLE_RELOAD=0;
-   mAUDIO_1_ENABLE_COUNT=0;
-   mAUDIO_1_LINKING=0;
-   mAUDIO_1_CURRENT=0;
-   mAUDIO_1_TIMER_DONE=0;
-   mAUDIO_1_LAST_CLOCK=0;
-   mAUDIO_1_BORROW_IN=0;
-   mAUDIO_1_BORROW_OUT=0;
-   mAUDIO_1_LAST_LINK_CARRY=0;
-   mAUDIO_1_LAST_COUNT=0;
-   mAUDIO_1_VOLUME=0;
-   mAUDIO_OUTPUT[1]=0;
-   mAUDIO_1_INTEGRATE_ENABLE=0;
-   mAUDIO_1_WAVESHAPER=0;
+   mAUDIO_1_BKUP = 0;
+   mAUDIO_1_ENABLE_RELOAD = 0;
+   mAUDIO_1_ENABLE_COUNT = 0;
+   mAUDIO_1_LINKING = 0;
+   mAUDIO_1_CURRENT = 0;
+   mAUDIO_1_TIMER_DONE = 0;
+   mAUDIO_1_LAST_CLOCK = 0;
+   mAUDIO_1_BORROW_IN = 0;
+   mAUDIO_1_BORROW_OUT = 0;
+   mAUDIO_1_LAST_LINK_CARRY = 0;
+   mAUDIO_1_LAST_COUNT = 0;
+   mAUDIO_1_VOLUME = 0;
+   mAUDIO_OUTPUT[1] = 0;
+   mAUDIO_1_INTEGRATE_ENABLE = 0;
+   mAUDIO_1_WAVESHAPER = 0;
 
-   mAUDIO_2_BKUP=0;
-   mAUDIO_2_ENABLE_RELOAD=0;
-   mAUDIO_2_ENABLE_COUNT=0;
-   mAUDIO_2_LINKING=0;
-   mAUDIO_2_CURRENT=0;
-   mAUDIO_2_TIMER_DONE=0;
-   mAUDIO_2_LAST_CLOCK=0;
-   mAUDIO_2_BORROW_IN=0;
-   mAUDIO_2_BORROW_OUT=0;
-   mAUDIO_2_LAST_LINK_CARRY=0;
-   mAUDIO_2_LAST_COUNT=0;
-   mAUDIO_2_VOLUME=0;
-   mAUDIO_OUTPUT[2]=0;
-   mAUDIO_2_INTEGRATE_ENABLE=0;
-   mAUDIO_2_WAVESHAPER=0;
+   mAUDIO_2_BKUP = 0;
+   mAUDIO_2_ENABLE_RELOAD = 0;
+   mAUDIO_2_ENABLE_COUNT = 0;
+   mAUDIO_2_LINKING = 0;
+   mAUDIO_2_CURRENT = 0;
+   mAUDIO_2_TIMER_DONE = 0;
+   mAUDIO_2_LAST_CLOCK = 0;
+   mAUDIO_2_BORROW_IN = 0;
+   mAUDIO_2_BORROW_OUT = 0;
+   mAUDIO_2_LAST_LINK_CARRY = 0;
+   mAUDIO_2_LAST_COUNT = 0;
+   mAUDIO_2_VOLUME = 0;
+   mAUDIO_OUTPUT[2] = 0;
+   mAUDIO_2_INTEGRATE_ENABLE = 0;
+   mAUDIO_2_WAVESHAPER = 0;
 
-   mAUDIO_3_BKUP=0;
-   mAUDIO_3_ENABLE_RELOAD=0;
-   mAUDIO_3_ENABLE_COUNT=0;
-   mAUDIO_3_LINKING=0;
-   mAUDIO_3_CURRENT=0;
-   mAUDIO_3_TIMER_DONE=0;
-   mAUDIO_3_LAST_CLOCK=0;
-   mAUDIO_3_BORROW_IN=0;
-   mAUDIO_3_BORROW_OUT=0;
-   mAUDIO_3_LAST_LINK_CARRY=0;
-   mAUDIO_3_LAST_COUNT=0;
-   mAUDIO_3_VOLUME=0;
-   mAUDIO_OUTPUT[3]=0;
-   mAUDIO_3_INTEGRATE_ENABLE=0;
-   mAUDIO_3_WAVESHAPER=0;
+   mAUDIO_3_BKUP = 0;
+   mAUDIO_3_ENABLE_RELOAD = 0;
+   mAUDIO_3_ENABLE_COUNT = 0;
+   mAUDIO_3_LINKING = 0;
+   mAUDIO_3_CURRENT = 0;
+   mAUDIO_3_TIMER_DONE = 0;
+   mAUDIO_3_LAST_CLOCK = 0;
+   mAUDIO_3_BORROW_IN = 0;
+   mAUDIO_3_BORROW_OUT = 0;
+   mAUDIO_3_LAST_LINK_CARRY = 0;
+   mAUDIO_3_LAST_COUNT = 0;
+   mAUDIO_3_VOLUME = 0;
+   mAUDIO_OUTPUT[3] = 0;
+   mAUDIO_3_INTEGRATE_ENABLE = 0;
+   mAUDIO_3_WAVESHAPER = 0;
 
-   mSTEREO=0x00;	// xored! All channels enabled
-   mPAN=0x00;      // all channels panning OFF
-   mAUDIO_ATTEN[0]=0xff; // Full volume
-   mAUDIO_ATTEN[1]=0xff;
-   mAUDIO_ATTEN[2]=0xff;
-   mAUDIO_ATTEN[3]=0xff;
+   mSTEREO = 0x00;         // xored! All channels enabled
+   mPAN = 0x00;            // all channels panning OFF
+   mAUDIO_ATTEN[0] = 0xff; // Full volume
+   mAUDIO_ATTEN[1] = 0xff;
+   mAUDIO_ATTEN[2] = 0xff;
+   mAUDIO_ATTEN[3] = 0xff;
 
    // Start with an empty palette
 
-   for(int loop=0;loop<16;loop++) {
-      mPalette[loop].Index=loop;
+   for (int loop = 0; loop < 16; loop++) {
+      mPalette[loop].Index = loop;
    }
 
    // Initialise IODAT register
 
-   mIODAT=0x00;
-   mIODIR=0x00;
-   mIODAT_REST_SIGNAL=0x00;
+   mIODAT = 0x00;
+   mIODIR = 0x00;
+   mIODAT_REST_SIGNAL = 0x00;
 
    //
    // Initialise display control register vars
    //
-   mDISPCTL_DMAEnable=FALSE;
-   mDISPCTL_Flip=FALSE;
-   mDISPCTL_FourColour=0;
-   mDISPCTL_Colour=0;
+   mDISPCTL_DMAEnable = FALSE;
+   mDISPCTL_Flip = FALSE;
+   mDISPCTL_FourColour = 0;
+   mDISPCTL_Colour = 0;
 
    //
    // Initialise the UART variables
    //
-   mUART_RX_IRQ_ENABLE=0;
-   mUART_TX_IRQ_ENABLE=0;
+   mUART_RX_IRQ_ENABLE = 0;
+   mUART_TX_IRQ_ENABLE = 0;
 
-   mUART_TX_COUNTDOWN=UART_TX_INACTIVE;
-   mUART_RX_COUNTDOWN=UART_RX_INACTIVE;
+   mUART_TX_COUNTDOWN = UART_TX_INACTIVE;
+   mUART_RX_COUNTDOWN = UART_RX_INACTIVE;
 
-   mUART_Rx_input_ptr=0;
-   mUART_Rx_output_ptr=0;
-   mUART_Rx_waiting=0;
-   mUART_Rx_framing_error=0;
-   mUART_Rx_overun_error=0;
+   mUART_Rx_input_idx = 0;
+   mUART_Rx_output_idx = 0;
+   mUART_Rx_waiting = 0;
+   mUART_Rx_framing_error = 0;
+   mUART_Rx_overun_error = 0;
 
-   mUART_SENDBREAK=0;
-   mUART_TX_DATA=0;
-   mUART_RX_DATA=0;
-   mUART_RX_READY=0;
+   mUART_SENDBREAK = 0;
+   mUART_TX_DATA = 0;
+   mUART_RX_DATA = 0;
+   mUART_RX_READY = 0;
 
-   mUART_PARITY_ENABLE=0;
-   mUART_PARITY_EVEN=0;
+   mUART_PARITY_ENABLE = 0;
+   mUART_PARITY_EVEN = 0;
 }
 
 ULONG CMikie::GetLfsrNext(ULONG current)
@@ -338,18 +352,17 @@ ULONG CMikie::GetLfsrNext(ULONG current)
    // If the index is a combination of Current LFSR+Feedback the
    // table will give the next value.
 
-   static ULONG switches,lfsr,next,swloop,result;
    static const ULONG switchbits[9]={7,0,1,2,3,4,5,10,11};
 
-   switches=current>>12;
-   lfsr=current&0xfff;
-   result=0;
-   for(swloop=0;swloop<9;swloop++) {
-      if((switches>>swloop)&0x001) result^=(lfsr>>switchbits[swloop])&0x001;
+   mSwitches = current >> 12;
+   mLfsr = current & 0xfff;
+   mResult = 0;
+   for(mSwLoop = 0; mSwLoop < 9; ++mSwLoop) {
+      if((mSwitches >> mSwLoop) & 0x001) mResult ^= (mLfsr >> switchbits[mSwLoop]) & 0x001;
    }
-   result=(result)?0:1;
-   next=(switches<<12)|((lfsr<<1)&0xffe)|result;
-   return next;
+   mResult = (mResult) ? 0 : 1;
+   mNext = (mSwitches << 12) | ((mLfsr << 1) & 0xffe) | mResult;
+   return mNext;
 }
 
 bool CMikie::ContextSave(LSS_FILE *fp)
@@ -795,8 +808,8 @@ void CMikie::ComLynxRxData(int data)
       if(!mUART_Rx_waiting) mUART_RX_COUNTDOWN=UART_RX_TIME_PERIOD;
 
       // Receive the byte
-      mUART_Rx_input_queue[mUART_Rx_input_ptr]=data;
-      mUART_Rx_input_ptr=(++mUART_Rx_input_ptr)%UART_MAX_RX_QUEUE;
+      mUART_Rx_input_queue[mUART_Rx_input_idx]=data;
+      mUART_Rx_input_idx=(++mUART_Rx_input_idx)%UART_MAX_RX_QUEUE;
       mUART_Rx_waiting++;
    }
 }
@@ -810,8 +823,8 @@ void CMikie::ComLynxTxLoopback(int data)
       if(!mUART_Rx_waiting) mUART_RX_COUNTDOWN=UART_RX_TIME_PERIOD;
 
       // Receive the byte - INSERT into front of queue
-      mUART_Rx_output_ptr=(--mUART_Rx_output_ptr)%UART_MAX_RX_QUEUE;
-      mUART_Rx_input_queue[mUART_Rx_output_ptr]=data;
+      mUART_Rx_output_idx=(--mUART_Rx_output_idx)%UART_MAX_RX_QUEUE;
+      mUART_Rx_input_queue[mUART_Rx_output_idx]=data;
       mUART_Rx_waiting++;
    }
 }
@@ -823,13 +836,13 @@ void CMikie::ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG obj
 }
 
 
-void CMikie::DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (*RenderCallback)(ULONG objref),ULONG objref)
+void CMikie::DisplaySetAttributes(ULONG rotate, ULONG format, ULONG pitch, UBYTE* (*renderCallback)(ULONG objref),ULONG objref)
 {
-   mDisplayRotate=Rotate;
-   mDisplayFormat=Format;
-   mDisplayPitch=Pitch;
-   mpDisplayCallback=RenderCallback;
-   mDisplayCallbackObject=objref;
+   mDisplayRotate = rotate;
+   mDisplayFormat = format;
+   mDisplayPitch = pitch;
+   mpDisplayCallback = renderCallback;
+   mDisplayCallbackObject = objref;
 
    mpDisplayCurrent=NULL;
 
@@ -882,7 +895,7 @@ void CMikie::DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (
          }
          break;
       default:
-         if(gError) gError->Warning("CMikie::SetScreenAttributes() - Unrecognised display format");
+         if(mSystem.mError) mSystem.mError->Warning("CMikie::SetScreenAttributes() - Unrecognised display format");
          for(Spot.Index=0;Spot.Index<4096;Spot.Index++) mColourMap[Spot.Index]=0;
          break;
    }
@@ -896,7 +909,7 @@ void CMikie::DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (
    mTIM_2_LAST_COUNT-=(1<<(4+mTIM_2_LINKING))+1;
 
    // Force immediate timer update
-   gNextTimerEvent=gSystemCycleCount;
+   mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
 }
 
 
@@ -915,7 +928,7 @@ ULONG CMikie::DisplayRenderLine(void)
    // Set the timer interrupt flag
    if(mTimerInterruptMask&0x01) {
       mTimerStatusFlags|=0x01;
-      gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+      mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
    }
 
    // Logic says it should be 101 but testing on an actual lynx shows the rest
@@ -948,7 +961,7 @@ ULONG CMikie::DisplayRenderLine(void)
       work_done+=(80+100)*DMA_RDWR_CYC;
 
       // If we are skipping this frame, return now
-      if(gSkipFrame)
+      if(mSystem.mSkipFrame)
          return work_done;
 
       // Mikie screen DMA can only see the system RAM....
@@ -1341,15 +1354,15 @@ ULONG CMikie::DisplayEndOfFrame(void)
    mLynxLineDMACounter=0;
    mLynxLine=mTIM_2_BKUP;
 
-   if(gCPUWakeupTime) {
-      gCPUWakeupTime = 0;
+   if(mSystem.mCPUWakeupTime) {
+      mSystem.mCPUWakeupTime = 0;
       ClearCPUSleep();   
    }
 	
    // Set the timer status flag
    if(mTimerInterruptMask&0x04) {
       mTimerStatusFlags|=0x04;
-      gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+      mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
    }
 
    //	("Update() - Frame end");
@@ -1417,16 +1430,16 @@ ULONG CMikie::DisplayEndOfFrame(void)
 
 void	CMikie::AudioEndOfFrame(void)
 {
-   mikbuf.end_frame((gSystemCycleCount - gAudioLastUpdateCycle) / 4);
-   gAudioBufferPointer = mikbuf.read_samples((blip_sample_t*) gAudioBuffer, HANDY_AUDIO_BUFFER_SIZE / 2);
-   gAudioLastUpdateCycle = gSystemCycleCount;
+   mikbuf.end_frame((mSystem.mSystemCycleCount - mSystem.mAudioLastUpdateCycle) / 4);
+   mSystem.mAudioBufferPointer = mikbuf.read_samples((blip_sample_t*) mSystem.mAudioBuffer, HANDY_AUDIO_BUFFER_SIZE / 2);
+   mSystem.mAudioLastUpdateCycle = mSystem.mSystemCycleCount;
 }
 
 // Peek/Poke memory handlers
 
-void CMikie::Poke(ULONG addr,UBYTE data)
+void CMikie::Poke(ULONG addr, UBYTE data)
 {
-   switch(addr&0xff) {
+    switch(addr&0xff) {
       case (TIM0BKUP&0xff):
          mTIM_0_BKUP=data;
          break;
@@ -1461,8 +1474,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_0_LINKING=data&0x07;
          if(data&0x40) mTIM_0_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_0_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_0_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM1CTLA&0xff):
@@ -1473,8 +1486,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_1_LINKING=data&0x07;
          if(data&0x40) mTIM_1_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_1_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_1_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM2CTLA&0xff):
@@ -1485,8 +1498,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_2_LINKING=data&0x07;
          if(data&0x40) mTIM_2_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_2_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_2_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM3CTLA&0xff):
@@ -1497,8 +1510,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_3_LINKING=data&0x07;
          if(data&0x40) mTIM_3_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_3_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_3_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM4CTLA&0xff):
@@ -1509,8 +1522,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_4_LINKING=data&0x07;
          if(data&0x40) mTIM_4_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_4_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_4_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM5CTLA&0xff):
@@ -1521,8 +1534,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_5_LINKING=data&0x07;
          if(data&0x40) mTIM_5_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_5_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_5_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM6CTLA&0xff):
@@ -1533,8 +1546,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_6_LINKING=data&0x07;
          if(data&0x40) mTIM_6_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_6_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_6_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (TIM7CTLA&0xff):
@@ -1545,43 +1558,43 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mTIM_7_LINKING=data&0x07;
          if(data&0x40) mTIM_7_TIMER_DONE=0;
          if(data&0x48) {
-            mTIM_7_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mTIM_7_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
 
 
       case (TIM0CNT&0xff):
          mTIM_0_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM1CNT&0xff):
          mTIM_1_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM2CNT&0xff):
          mTIM_2_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM3CNT&0xff):
          mTIM_3_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM4CNT&0xff):
          mTIM_4_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM5CNT&0xff):
          mTIM_5_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM6CNT&0xff):
          mTIM_6_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
       case (TIM7CNT&0xff):
          mTIM_7_CURRENT=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
 
       case (TIM0CTLB&0xff):
@@ -1660,8 +1673,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          // due to the fact that the output frequency will be above audio
          // range, we must update the last use position to stop problems
          if(!mAUDIO_0_BKUP && data) {
-            mAUDIO_0_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_0_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          mAUDIO_0_BKUP=data;
          break;
@@ -1674,8 +1687,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mAUDIO_0_WAVESHAPER&=0x1fefff;
          mAUDIO_0_WAVESHAPER|=(data&0x80)?0x001000:0x000000;
          if(data&0x48) {
-            mAUDIO_0_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_0_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (AUD0COUNT&0xff):
@@ -1708,8 +1721,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          // due to the fact that the output frequency will be above audio
          // range, we must update the last use position to stop problems
          if(!mAUDIO_1_BKUP && data) {
-            mAUDIO_1_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_1_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          mAUDIO_1_BKUP=data;
          break;
@@ -1722,8 +1735,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mAUDIO_1_WAVESHAPER&=0x1fefff;
          mAUDIO_1_WAVESHAPER|=(data&0x80)?0x001000:0x000000;
          if(data&0x48) {
-            mAUDIO_1_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_1_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (AUD1COUNT&0xff):
@@ -1756,8 +1769,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          // due to the fact that the output frequency will be above audio
          // range, we must update the last use position to stop problems
          if(!mAUDIO_2_BKUP && data) {
-            mAUDIO_2_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_2_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          mAUDIO_2_BKUP=data;
          break;
@@ -1770,8 +1783,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mAUDIO_2_WAVESHAPER&=0x1fefff;
          mAUDIO_2_WAVESHAPER|=(data&0x80)?0x001000:0x000000;
          if(data&0x48) {
-            mAUDIO_2_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_2_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (AUD2COUNT&0xff):
@@ -1804,8 +1817,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          // due to the fact that the output frequency will be above audio
          // range, we must update the last use position to stop problems
          if(!mAUDIO_3_BKUP && data) {
-            mAUDIO_3_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_3_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          mAUDIO_3_BKUP=data;
          break;
@@ -1818,8 +1831,8 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mAUDIO_3_WAVESHAPER&=0x1fefff;
          mAUDIO_3_WAVESHAPER|=(data&0x80)?0x001000:0x000000;
          if(data&0x48) {
-            mAUDIO_3_LAST_COUNT=gSystemCycleCount;
-            gNextTimerEvent=gSystemCycleCount;
+            mAUDIO_3_LAST_COUNT=mSystem.mSystemCycleCount;
+            mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          }
          break;
       case (AUD3COUNT&0xff):
@@ -1853,41 +1866,41 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          mSTEREO=data;
          //			if(!(mSTEREO&0x11) && (data&0x11))
          //			{
-         //				mAUDIO_0_LAST_COUNT=gSystemCycleCount;
-         //				gNextTimerEvent=gSystemCycleCount;
+         //				mAUDIO_0_LAST_COUNT=mSystem.mSystemCycleCount;
+         //				mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          //			}
          //			if(!(mSTEREO&0x22) && (data&0x22))
          //			{
-         //				mAUDIO_1_LAST_COUNT=gSystemCycleCount;
-         //				gNextTimerEvent=gSystemCycleCount;
+         //				mAUDIO_1_LAST_COUNT=mSystem.mSystemCycleCount;
+         //				mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          //			}
          //			if(!(mSTEREO&0x44) && (data&0x44))
          //			{
-         //				mAUDIO_2_LAST_COUNT=gSystemCycleCount;
-         //				gNextTimerEvent=gSystemCycleCount;
+         //				mAUDIO_2_LAST_COUNT=mSystem.mSystemCycleCount;
+         //				mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          //			}
          //			if(!(mSTEREO&0x88) && (data&0x88))
          //			{
-         //				mAUDIO_3_LAST_COUNT=gSystemCycleCount;
-         //				gNextTimerEvent=gSystemCycleCount;
+         //				mAUDIO_3_LAST_COUNT=mSystem.mSystemCycleCount;
+         //				mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          //			}
          break;
 
       case (INTRST&0xff):
          data^=0xff;
          mTimerStatusFlags&=data;
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          // 22/09/06 Fix to championship rally, IRQ not getting cleared with edge triggered system
-         gSystemIRQ=(mTimerStatusFlags&mTimerInterruptMask)?TRUE:FALSE;
+         mSystem.mSystemIRQ=(mTimerStatusFlags&mTimerInterruptMask)?TRUE:FALSE;
          // 22/09/06 Fix to championship rally, IRQ not getting cleared with edge triggered system
          break;
 
       case (INTSET&0xff):
          mTimerStatusFlags|=data;
          // 22/09/06 Fix to championship rally, IRQ not getting cleared with edge triggered system
-         gSystemIRQ=(mTimerStatusFlags&mTimerInterruptMask)?TRUE:FALSE;
+         mSystem.mSystemIRQ=(mTimerStatusFlags&mTimerInterruptMask)?TRUE:FALSE;
          // 22/09/06 Fix to championship rally, IRQ not getting cleared with edge triggered system
-         gNextTimerEvent=gSystemCycleCount;
+         mSystem.mNextTimerEvent=mSystem.mSystemCycleCount;
          break;
 
       case (SYSCTL1&0xff):
@@ -1896,9 +1909,9 @@ void CMikie::Poke(ULONG addr,UBYTE data)
             C6502_REGS regs;
             mSystem.GetRegs(regs);
             sprintf(addr,"Runtime Alert - System Halted\nCMikie::Poke(SYSCTL1) - Lynx power down occured at PC=$%04x.\nResetting system.",regs.PC);
-            if(gError) gError->Warning(addr);
+            if(mSystem.mError) mSystem.mError->Warning(addr);
             mSystem.Reset();
-            gSystemHalt=TRUE;
+            mSystem.mSystemHalt=TRUE;
          }
          mSystem.CartAddressStrobe((data&0x01)?TRUE:FALSE);
          if(mSystem.mEEPROM->Available()) mSystem.mEEPROM->ProcessEepromCounter(mSystem.mCart->GetCounterValue());
@@ -1920,7 +1933,7 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          if(mSystem.mEEPROM->Available()) mSystem.mEEPROM->ProcessEepromIO(mIODIR,mIODAT);
          break;
 
-      case (SERCTL&0xff):
+       case (SERCTL&0xff):
          mUART_TX_IRQ_ENABLE=(data&0x80)?true:false;
          mUART_RX_IRQ_ENABLE=(data&0x40)?true:false;
          mUART_PARITY_ENABLE=(data&0x10)?true:false;
@@ -1973,7 +1986,7 @@ void CMikie::Poke(ULONG addr,UBYTE data)
          //
          {
             int32_t cycles_used=(int32_t)mSystem.PaintSprites();
-            gCPUWakeupTime=gSystemCycleCount+cycles_used;
+            mSystem.mCPUWakeupTime=mSystem.mSystemCycleCount+cycles_used;
             SetCPUSleep();
          }
          break;
@@ -2008,7 +2021,7 @@ void CMikie::Poke(ULONG addr,UBYTE data)
       case (Mtest2&0xff):
          // Test registers are unimplemented
          // lets hope no programs use them.
-         if(gError) gError->Warning("CMikie::Poke() - Write to MTEST2");
+         if(mSystem.mError) mSystem.mError->Warning("CMikie::Poke() - Write to MTEST2");
          break;
 
       case (0xfd97&0xff): {
@@ -2509,7 +2522,7 @@ UBYTE CMikie::Peek(ULONG addr)
       // Register to let programs know handy is running
 
       case (0xfd97&0xff):
-         //			gError->Warning("EMULATOR DETECT REGISTER HAS BEEN READ");
+         // mSystem.mError->Warning("EMULATOR DETECT REGISTER HAS BEEN READ");
          break;
          //return 0x42;
          // Errors on illegal location accesses
@@ -2534,11 +2547,11 @@ inline void CMikie::Update(void)
 
    //			("Update()");
 
-   if(gSystemCycleCount>0xf0000000) {
-      gSystemCycleCount-=0x80000000;
-      gLastRunCycleCount-=0x80000000;
-      gThrottleNextCycleCheckpoint-=0x80000000;
-      gAudioLastUpdateCycle-=0x80000000;
+   if(mSystem.mSystemCycleCount>0xf0000000) {
+      mSystem.mSystemCycleCount-=0x80000000;
+      mSystem.mLastRunCycleCount-=0x80000000;
+      mSystem.mThrottleNextCycleCheckpoint-=0x80000000;
+      mSystem.mAudioLastUpdateCycle-=0x80000000;
       mTIM_0_LAST_COUNT-=0x80000000;
       mTIM_1_LAST_COUNT-=0x80000000;
       mTIM_2_LAST_COUNT-=0x80000000;
@@ -2552,27 +2565,27 @@ inline void CMikie::Update(void)
       mAUDIO_2_LAST_COUNT-=0x80000000;
       mAUDIO_3_LAST_COUNT-=0x80000000;
       // Only correct if sleep is active
-      if(gCPUWakeupTime) {
-         gCPUWakeupTime-=0x80000000;
-         gIRQEntryCycle-=0x80000000;
+      if(mSystem.mCPUWakeupTime) {
+         mSystem.mCPUWakeupTime-=0x80000000;
+         mSystem.mIRQEntryCycle-=0x80000000;
       }
    }
 
-   gNextTimerEvent=0xffffffff;
+   mSystem.mNextTimerEvent=0xffffffff;
 
    //
    // Check if the CPU needs to be woken up from sleep mode
    //
-   if(gCPUWakeupTime)
+   if(mSystem.mCPUWakeupTime)
    {
-      if(gSystemCycleCount>=gCPUWakeupTime)
+      if(mSystem.mSystemCycleCount>=mSystem.mCPUWakeupTime)
       {
          ClearCPUSleep();
-         gCPUWakeupTime=0;
+         mSystem.mCPUWakeupTime=0;
       }
       else
       {
-         if(gCPUWakeupTime>gSystemCycleCount) gNextTimerEvent=gCPUWakeupTime;
+         if(mSystem.mCPUWakeupTime>mSystem.mSystemCycleCount) mSystem.mNextTimerEvent=mSystem.mCPUWakeupTime;
       }
    }
 
@@ -2620,7 +2633,7 @@ inline void CMikie::Update(void)
          // Ordinary clocked mode as opposed to linked mode
          // 16MHz clock downto 1us == cyclecount >> 4
          divide=(4+mTIM_0_LINKING);
-         decval=(gSystemCycleCount-mTIM_0_LAST_COUNT)>>divide;
+         decval=(mSystem.mSystemCycleCount-mTIM_0_LAST_COUNT)>>divide;
 
          if(decval) {
             mTIM_0_LAST_COUNT+=decval<<divide;
@@ -2670,9 +2683,9 @@ inline void CMikie::Update(void)
          // then CURRENT may still be negative and we can use it to
          // calc the next timer value, we just want another update ASAP
          tmp=(mTIM_0_CURRENT&0x80000000)?1:((mTIM_0_CURRENT+1)<<divide);
-         tmp+=gSystemCycleCount;
-         if(tmp<gNextTimerEvent) {
-            gNextTimerEvent=tmp;
+         tmp+=mSystem.mSystemCycleCount;
+         if(tmp<mSystem.mNextTimerEvent) {
+            mSystem.mNextTimerEvent=tmp;
          }
       }
    }
@@ -2701,7 +2714,7 @@ inline void CMikie::Update(void)
       //					// Ordinary clocked mode as opposed to linked mode
       //					// 16MHz clock downto 1us == cyclecount >> 4
       //					divide=(4+mTIM_2_LINKING);
-      //					decval=(gSystemCycleCount-mTIM_2_LAST_COUNT)>>divide;
+      //					decval=(mSystem.mSystemCycleCount-mTIM_2_LAST_COUNT)>>divide;
       //				}
 
       if(decval) {
@@ -2742,8 +2755,8 @@ inline void CMikie::Update(void)
       // be beaten by the line timer on Timer 0
       //				if(mTIM_2_LINKING!=7)
       //				{
-      //					tmp=gSystemCycleCount+((mTIM_2_CURRENT+1)<<divide);
-      //					if(tmp<gNextTimerEvent)	gNextTimerEvent=tmp;
+      //					tmp=mSystem.mSystemCycleCount+((mTIM_2_CURRENT+1)<<divide);
+      //					if(tmp<mSystem.mNextTimerEvent)	mSystem.mNextTimerEvent=tmp;
       //				}
    }
 
@@ -2773,7 +2786,7 @@ inline void CMikie::Update(void)
          // 16MHz clock downto 1us == cyclecount >> 4
          // Additional /8 (+3) for 8 clocks per bit transmit
          divide=4+3+mTIM_4_LINKING;
-         decval=(gSystemCycleCount-mTIM_4_LAST_COUNT)>>divide;
+         decval=(mSystem.mSystemCycleCount-mTIM_4_LAST_COUNT)>>divide;
       }
 
       if(decval) {
@@ -2799,8 +2812,8 @@ inline void CMikie::Update(void)
             if(!mUART_RX_COUNTDOWN) {
                // Fetch a byte from the input queue
                if(mUART_Rx_waiting>0) {
-                  mUART_RX_DATA=mUART_Rx_input_queue[mUART_Rx_output_ptr];
-                  mUART_Rx_output_ptr=(++mUART_Rx_output_ptr)%UART_MAX_RX_QUEUE;
+                  mUART_RX_DATA=mUART_Rx_input_queue[mUART_Rx_output_idx];
+                  mUART_Rx_output_idx=(++mUART_Rx_output_idx)%UART_MAX_RX_QUEUE;
                   mUART_Rx_waiting--;
                }
 
@@ -2854,7 +2867,7 @@ inline void CMikie::Update(void)
             // an underun, check and fix
             if(mTIM_4_CURRENT&0x80000000) {
                mTIM_4_CURRENT=mTIM_4_BKUP;
-               mTIM_4_LAST_COUNT=gSystemCycleCount;
+               mTIM_4_LAST_COUNT=mSystem.mSystemCycleCount;
             }
             //						}
             //						else
@@ -2886,9 +2899,9 @@ inline void CMikie::Update(void)
       // then CURRENT may still be negative and we can use it to
       // calc the next timer value, we just want another update ASAP
       tmp=(mTIM_4_CURRENT&0x80000000)?1:((mTIM_4_CURRENT+1)<<divide);
-      tmp+=gSystemCycleCount;
-      if(tmp<gNextTimerEvent) {
-         gNextTimerEvent=tmp;
+      tmp+=mSystem.mSystemCycleCount;
+      if(tmp<mSystem.mNextTimerEvent) {
+         mSystem.mNextTimerEvent=tmp;
       }
       //				}
    }
@@ -2901,13 +2914,13 @@ inline void CMikie::Update(void)
    // IRQ is enabled then generate it always
    if((mUART_TX_COUNTDOWN&UART_TX_INACTIVE) && mUART_TX_IRQ_ENABLE) {
       mTimerStatusFlags|=0x10;
-      gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+      mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
    }
    // Is data waiting and the interrupt enabled, if so then
    // what are we waiting for....
    if(mUART_RX_READY && mUART_RX_IRQ_ENABLE) {
       mTimerStatusFlags|=0x10;
-      gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+      mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
    }
 
    //
@@ -2919,7 +2932,7 @@ inline void CMikie::Update(void)
          // Ordinary clocked mode as opposed to linked mode
          // 16MHz clock downto 1us == cyclecount >> 4
          divide=(4+mTIM_1_LINKING);
-         decval=(gSystemCycleCount-mTIM_1_LAST_COUNT)>>divide;
+         decval=(mSystem.mSystemCycleCount-mTIM_1_LAST_COUNT)>>divide;
 
          if(decval) {
             mTIM_1_LAST_COUNT+=decval<<divide;
@@ -2931,7 +2944,7 @@ inline void CMikie::Update(void)
                // Set the timer status flag
                if(mTimerInterruptMask&0x02) {
                   mTimerStatusFlags|=0x02;
-                  gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+                  mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
                }
 
                // Reload if neccessary
@@ -2961,9 +2974,9 @@ inline void CMikie::Update(void)
          // then CURRENT may still be negative and we can use it to
          // calc the next timer value, we just want another update ASAP
          tmp=(mTIM_1_CURRENT&0x80000000)?1:((mTIM_1_CURRENT+1)<<divide);
-         tmp+=gSystemCycleCount;
-         if(tmp<gNextTimerEvent)
-            gNextTimerEvent=tmp;
+         tmp+=mSystem.mSystemCycleCount;
+         if(tmp<mSystem.mNextTimerEvent)
+            mSystem.mNextTimerEvent=tmp;
       }
    }
 
@@ -2981,7 +2994,7 @@ inline void CMikie::Update(void)
          // Ordinary clocked mode as opposed to linked mode
          // 16MHz clock downto 1us == cyclecount >> 4
          divide=(4+mTIM_3_LINKING);
-         decval=(gSystemCycleCount-mTIM_3_LAST_COUNT)>>divide;
+         decval=(mSystem.mSystemCycleCount-mTIM_3_LAST_COUNT)>>divide;
       }
 
       if(decval) {
@@ -2994,7 +3007,7 @@ inline void CMikie::Update(void)
             // Set the timer status flag
             if(mTimerInterruptMask&0x08) {
                mTimerStatusFlags|=0x08;
-               gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+               mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
             }
 
             // Reload if neccessary
@@ -3023,9 +3036,9 @@ inline void CMikie::Update(void)
          // then CURRENT may still be negative and we can use it to
          // calc the next timer value, we just want another update ASAP
          tmp=(mTIM_3_CURRENT&0x80000000)?1:((mTIM_3_CURRENT+1)<<divide);
-         tmp+=gSystemCycleCount;
-         if(tmp<gNextTimerEvent) {
-            gNextTimerEvent=tmp;
+         tmp+=mSystem.mSystemCycleCount;
+         if(tmp<mSystem.mNextTimerEvent) {
+            mSystem.mNextTimerEvent=tmp;
          }
       }
    }
@@ -3044,7 +3057,7 @@ inline void CMikie::Update(void)
          // Ordinary clocked mode as opposed to linked mode
          // 16MHz clock downto 1us == cyclecount >> 4
          divide=(4+mTIM_5_LINKING);
-         decval=(gSystemCycleCount-mTIM_5_LAST_COUNT)>>divide;
+         decval=(mSystem.mSystemCycleCount-mTIM_5_LAST_COUNT)>>divide;
       }
 
       if(decval) {
@@ -3057,7 +3070,7 @@ inline void CMikie::Update(void)
             // Set the timer status flag
             if(mTimerInterruptMask&0x20) {
                mTimerStatusFlags|=0x20;
-               gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+               mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
             }
 
             // Reload if neccessary
@@ -3086,9 +3099,9 @@ inline void CMikie::Update(void)
          // then CURRENT may still be negative and we can use it to
          // calc the next timer value, we just want another update ASAP
          tmp=(mTIM_5_CURRENT&0x80000000)?1:((mTIM_5_CURRENT+1)<<divide);
-         tmp+=gSystemCycleCount;
-         if(tmp<gNextTimerEvent) {
-            gNextTimerEvent=tmp;
+         tmp+=mSystem.mSystemCycleCount;
+         if(tmp<mSystem.mNextTimerEvent) {
+            mSystem.mNextTimerEvent=tmp;
          }
       }
    }
@@ -3107,7 +3120,7 @@ inline void CMikie::Update(void)
           // Ordinary clocked mode as opposed to linked mode
           // 16MHz clock downto 1us == cyclecount >> 4
           divide=(4+mTIM_7_LINKING);
-          decval=(gSystemCycleCount-mTIM_7_LAST_COUNT)>>divide;
+          decval=(mSystem.mSystemCycleCount-mTIM_7_LAST_COUNT)>>divide;
       }
 
       if(decval) {
@@ -3120,7 +3133,7 @@ inline void CMikie::Update(void)
             // Set the timer status flag
             if(mTimerInterruptMask&0x80) {
                mTimerStatusFlags|=0x80;
-               gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+               mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
             }
 
             // Reload if neccessary
@@ -3150,9 +3163,9 @@ inline void CMikie::Update(void)
          // then CURRENT may still be negative and we can use it to
          // calc the next timer value, we just want another update ASAP
          tmp=(mTIM_7_CURRENT&0x80000000)?1:((mTIM_7_CURRENT+1)<<divide);
-         tmp+=gSystemCycleCount;
-         if(tmp<gNextTimerEvent) {
-            gNextTimerEvent=tmp;
+         tmp+=mSystem.mSystemCycleCount;
+         if(tmp<mSystem.mNextTimerEvent) {
+            mSystem.mNextTimerEvent=tmp;
          }
       }
    }
@@ -3167,7 +3180,7 @@ inline void CMikie::Update(void)
          // Ordinary clocked mode as opposed to linked mode
          // 16MHz clock downto 1us == cyclecount >> 4
          divide=(4+mTIM_6_LINKING);
-         decval=(gSystemCycleCount-mTIM_6_LAST_COUNT)>>divide;
+         decval=(mSystem.mSystemCycleCount-mTIM_6_LAST_COUNT)>>divide;
 
          if(decval) {
             mTIM_6_LAST_COUNT+=decval<<divide;
@@ -3179,7 +3192,7 @@ inline void CMikie::Update(void)
                // Set the timer status flag
                if(mTimerInterruptMask&0x40) {
                   mTimerStatusFlags|=0x40;
-                  gSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
+                  mSystem.mSystemIRQ=TRUE;	// Added 19/09/06 fix for IRQ issue
                }
 
                // Reload if neccessary
@@ -3211,9 +3224,9 @@ inline void CMikie::Update(void)
          // then CURRENT may still be negative and we can use it to
          // calc the next timer value, we just want another update ASAP
          tmp=(mTIM_6_CURRENT&0x80000000)?1:((mTIM_6_CURRENT+1)<<divide);
-         tmp+=gSystemCycleCount;
-         if(tmp<gNextTimerEvent) {
-            gNextTimerEvent=tmp;
+         tmp+=mSystem.mSystemCycleCount;
+         if(tmp<mSystem.mNextTimerEvent) {
+            mSystem.mNextTimerEvent=tmp;
          }
       }
    }
@@ -3221,7 +3234,7 @@ inline void CMikie::Update(void)
    //
    // If sound is enabled then update the sound subsystem
    //
-   if(gAudioEnabled) {
+   if(mSystem.mAudioEnabled) {
       //
       // Audio 0
       //
@@ -3236,7 +3249,7 @@ inline void CMikie::Update(void)
             // Ordinary clocked mode as opposed to linked mode
             // 16MHz clock downto 1us == cyclecount >> 4
             divide=(4+mAUDIO_0_LINKING);
-            decval=(gSystemCycleCount-mAUDIO_0_LAST_COUNT)>>divide;
+            decval=(mSystem.mSystemCycleCount-mAUDIO_0_LAST_COUNT)>>divide;
          }
 
          if(decval) {
@@ -3292,9 +3305,9 @@ inline void CMikie::Update(void)
             // then CURRENT may still be negative and we can use it to
             // calc the next timer value, we just want another update ASAP
             tmp=(mAUDIO_0_CURRENT&0x80000000)?1:((mAUDIO_0_CURRENT+1)<<divide);
-            tmp+=gSystemCycleCount;
-            if(tmp<gNextTimerEvent) {
-               gNextTimerEvent=tmp;
+            tmp+=mSystem.mSystemCycleCount;
+            if(tmp<mSystem.mNextTimerEvent) {
+               mSystem.mNextTimerEvent=tmp;
             }
          }
       }
@@ -3313,7 +3326,7 @@ inline void CMikie::Update(void)
             // Ordinary clocked mode as opposed to linked mode
             // 16MHz clock downto 1us == cyclecount >> 4
             divide=(4+mAUDIO_1_LINKING);
-            decval=(gSystemCycleCount-mAUDIO_1_LAST_COUNT)>>divide;
+            decval=(mSystem.mSystemCycleCount-mAUDIO_1_LAST_COUNT)>>divide;
          }
 
          if(decval) {
@@ -3369,9 +3382,9 @@ inline void CMikie::Update(void)
             // then CURRENT may still be negative and we can use it to
             // calc the next timer value, we just want another update ASAP
             tmp=(mAUDIO_1_CURRENT&0x80000000)?1:((mAUDIO_1_CURRENT+1)<<divide);
-            tmp+=gSystemCycleCount;
-            if(tmp<gNextTimerEvent) {
-               gNextTimerEvent=tmp;
+            tmp+=mSystem.mSystemCycleCount;
+            if(tmp<mSystem.mNextTimerEvent) {
+               mSystem.mNextTimerEvent=tmp;
             }
          }
       }
@@ -3390,7 +3403,7 @@ inline void CMikie::Update(void)
             // Ordinary clocked mode as opposed to linked mode
             // 16MHz clock downto 1us == cyclecount >> 4
             divide=(4+mAUDIO_2_LINKING);
-            decval=(gSystemCycleCount-mAUDIO_2_LAST_COUNT)>>divide;
+            decval=(mSystem.mSystemCycleCount-mAUDIO_2_LAST_COUNT)>>divide;
          }
 
          if(decval) {
@@ -3446,9 +3459,9 @@ inline void CMikie::Update(void)
             // then CURRENT may still be negative and we can use it to
             // calc the next timer value, we just want another update ASAP
             tmp=(mAUDIO_2_CURRENT&0x80000000)?1:((mAUDIO_2_CURRENT+1)<<divide);
-            tmp+=gSystemCycleCount;
-            if(tmp<gNextTimerEvent) {
-               gNextTimerEvent=tmp;
+            tmp+=mSystem.mSystemCycleCount;
+            if(tmp<mSystem.mNextTimerEvent) {
+               mSystem.mNextTimerEvent=tmp;
             }
          }
       }
@@ -3467,7 +3480,7 @@ inline void CMikie::Update(void)
             // Ordinary clocked mode as opposed to linked mode
             // 16MHz clock downto 1us == cyclecount >> 4
             divide=(4+mAUDIO_3_LINKING);
-            decval=(gSystemCycleCount-mAUDIO_3_LAST_COUNT)>>divide;
+            decval=(mSystem.mSystemCycleCount-mAUDIO_3_LAST_COUNT)>>divide;
          }
 
          if(decval) {
@@ -3523,9 +3536,9 @@ inline void CMikie::Update(void)
             // then CURRENT may still be negative and we can use it to
             // calc the next timer value, we just want another update ASAP
             tmp=(mAUDIO_3_CURRENT&0x80000000)?1:((mAUDIO_3_CURRENT+1)<<divide);
-            tmp+=gSystemCycleCount;
-            if(tmp<gNextTimerEvent) {
-               gNextTimerEvent=tmp;
+            tmp+=mSystem.mSystemCycleCount;
+            if(tmp<mSystem.mNextTimerEvent) {
+               mSystem.mNextTimerEvent=tmp;
             }
          }
       }
@@ -3533,17 +3546,17 @@ inline void CMikie::Update(void)
       UpdateSound();
    }
 
-   //			if(gSystemCycleCount==gNextTimerEvent) gError->Warning("CMikie::Update() - gSystemCycleCount==gNextTimerEvent, system lock likely");
+   //			if(mSystem.mSystemCycleCount==mSystem.mNextTimerEvent) gError->Warning("CMikie::Update() - mSystem.mSystemCycleCount==mSystem.mNextTimerEvent, system lock likely");
 
    // Update system IRQ status as a result of timer activity
-   gSystemIRQ=(mTimerStatusFlags)?true:false;
-   if(gSystemIRQ && gSystemCPUSleep) { ClearCPUSleep(); /*puts("ARLARM"); */ }
+   mSystem.mSystemIRQ=(mTimerStatusFlags)?true:false;
+   if(mSystem.mSystemIRQ && mSystem.mSystemCPUSleep) { ClearCPUSleep(); /*puts("ARLARM"); */ }
    //else if(gSuzieDoneTime) SetCPUSleep();
 
    // Now all the timer updates are done we can increment the system
-   // counter for any work done within the Update() function, gSystemCycleCounter
+   // counter for any work done within the Update() function, mSystem.mSystemCycleCounter
    // cannot be updated until this point otherwise it screws up the counters.
-   gSystemCycleCount+=mikie_work_done;
+   mSystem.mSystemCycleCount+=mikie_work_done;
 }
 
 inline void CMikie::UpdateSound(void)
@@ -3552,7 +3565,8 @@ inline void CMikie::UpdateSound(void)
    int cur_rsample = 0;
    int x;
 
-   for(x = 0; x < 4; x++){
+   for (x = 0; x < 4; x++)
+   {
       /// Assumption (seems there is no documentation for the Attenuation registers)
       /// a) they are linear from $0 to $f - checked!
       /// b) an attenuation of $0 is equal to channel OFF (bits in mSTEREO not set) - checked!
@@ -3561,30 +3575,31 @@ inline void CMikie::UpdateSound(void)
       /// the values stored in mSTEREO are NOT bit-inverted ...
       /// mSTEREO was found to be set like that already (why?), but unused
 
-      if(!(mSTEREO & (0x10 << x))) {
-         if(mPAN & (0x10 << x))
-            cur_lsample += (mAUDIO_OUTPUT[x]*(mAUDIO_ATTEN[x]&0xF0))/(16*16); /// NOT /15*16 see remark above
+      if (!(mSTEREO & (0x10 << x)))
+      {
+         if (mPAN & (0x10 << x))
+            cur_lsample += (mAUDIO_OUTPUT[x] * (mAUDIO_ATTEN[x] & 0xF0)) / (16 * 16); /// NOT /15*16 see remark above
          else
             cur_lsample += mAUDIO_OUTPUT[x];
       }
-      if(!(mSTEREO & (0x01 << x))) {
-         if(mPAN & (0x01 << x))
-            cur_rsample += (mAUDIO_OUTPUT[x]*(mAUDIO_ATTEN[x]&0x0F))/16; /// NOT /15 see remark above
+      if (!(mSTEREO & (0x01 << x)))
+      {
+         if (mPAN & (0x01 << x))
+            cur_rsample += (mAUDIO_OUTPUT[x] * (mAUDIO_ATTEN[x] & 0x0F)) / 16; /// NOT /15 see remark above
          else
             cur_rsample += mAUDIO_OUTPUT[x];
       }
    }
 
-   static int last_lsample = 0;
-   static int last_rsample = 0;
-
-   if(cur_lsample != last_lsample) {
-      miksynth.offset_inline((gSystemCycleCount - gAudioLastUpdateCycle) / 4, cur_lsample - last_lsample, mikbuf.left());
-      last_lsample = cur_lsample;
+   if (cur_lsample != mLastSampleL)
+   {
+      miksynth.offset_inline((mSystem.mSystemCycleCount - mSystem.mAudioLastUpdateCycle) / 4, cur_lsample - mLastSampleL, mikbuf.left());
+      mLastSampleL = cur_lsample;
    }
 
-   if(cur_rsample != last_rsample) {
-      miksynth.offset_inline((gSystemCycleCount - gAudioLastUpdateCycle) / 4, cur_rsample - last_rsample, mikbuf.right());
-      last_rsample = cur_rsample;
+   if (cur_rsample != mLastSampleR)
+   {
+      miksynth.offset_inline((mSystem.mSystemCycleCount - mSystem.mAudioLastUpdateCycle) / 4, cur_rsample - mLastSampleR, mikbuf.right());
+      mLastSampleR = cur_rsample;
    }
 }

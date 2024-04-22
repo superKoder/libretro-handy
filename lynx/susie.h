@@ -442,6 +442,18 @@ class CSusie : public CLynxBase
 
       TJOYSTICK	mJOYSTICK;
       TSWITCHES	mSWITCHES;
+
+
+      // State within PaintSprites()
+      int mPixelHeight=0;  // ex-static
+      int mPixelWidth=0;  // ex-static
+      int mPixel=0;  // ex-static
+      int mOffH=0,mOffV=0;  // ex-static
+      int mLoopH=0,mLoopV=0;  // ex-static
+      bool mIsOnscreen=0;  // ex-static
+      int mQuadOffV=0;  // ex-static
+      int mQuadOffH=0;  // ex-static
+
 };
 
 #endif

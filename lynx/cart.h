@@ -113,7 +113,7 @@ class CCart : public CLynxBase
    // Function members
 
    public:
-      CCart(const UBYTE *gamedata, ULONG gamesize);
+      CCart(CSystem &parent, const UBYTE *gamedata, ULONG gamesize);
       ~CCart();
 
    public:
@@ -168,6 +168,7 @@ class CCart : public CLynxBase
       UBYTE     mEEPROMType;
 
    private:
+      CSystem &mSystem;
       EMMODE	mBank;
 
       UBYTE	*mCartBank0;
@@ -184,6 +185,7 @@ class CCart : public CLynxBase
       ULONG	mShifter;
       ULONG	mAddrData;
       ULONG	mStrobe;
+      ULONG mLastStrobe;
 
       ULONG	mShiftCount0;
       ULONG	mCountMask0;

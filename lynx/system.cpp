@@ -193,7 +193,7 @@ CSystem::CSystem(const char *gamefile,
    switch(mFileType) {
       case HANDY_FILETYPE_RAW:
       case HANDY_FILETYPE_LNX:
-         mCart = new CCart(game_memory,game_memory_size);
+         mCart = new CCart(*this, game_memory,game_memory_size);
          if(mCart->CartHeaderLess()) {
             // Very strange Howard Check CANNOT work, as there are two
             // different loader-less card types...
@@ -235,20 +235,20 @@ CSystem::CSystem(const char *gamefile,
             }
 
             // Pass it to RAM to load
-            mRam = new CRam(howard_memory,howard_memory_size);
+            mRam = new CRam(*this, howard_memory,howard_memory_size);
          } else {
-            mRam = new CRam(0,0);
+            mRam = new CRam(*this, 0,0);
          }
          break;
       case HANDY_FILETYPE_HOMEBREW:
-         mCart = new CCart(0,0);
-         mRam = new CRam(game_memory,game_memory_size);
+         mCart = new CCart(*this, 0,0);
+         mRam = new CRam(*this, game_memory,game_memory_size);
          break;
       case HANDY_FILETYPE_SNAPSHOT:
       case HANDY_FILETYPE_ILLEGAL:
       default:
-         mCart = new CCart(0,0);
-         mRam = new CRam(0,0);
+         mCart = new CCart(*this, 0,0);
+         mRam = new CRam(*this, 0,0);
          break;
    }
 
@@ -262,9 +262,9 @@ CSystem::CSystem(const char *gamefile,
    mMemMap = new CMemMap(*this);
 
    // Now the handlers are set we can instantiate the CPU as is will use handlers on reset
-
+   
    mCpu = new C65C02(*this);
-
+ 
    // Now init is complete do a reset, this will cause many things to be reset twice
    // but what the hell, who cares, I don't.....
 
@@ -299,6 +299,41 @@ CSystem::~CSystem()
    if(mSusie!=NULL) delete mSusie;
    if(mMemMap!=NULL) delete mMemMap;
 }
+
+void CSystem::Update(void)
+{
+   // Only update if there is a predicted timer event
+   if(mSystemCycleCount>=mNextTimerEvent) 
+      mMikie->Update();
+   // Step the processor through 1 instruction
+   mCpu->Update();
+
+   // If the CPU is asleep then skip to the next timer event
+   if(mSystemCPUSleep)
+      mSystemCycleCount=mNextTimerEvent;
+}
+
+void CSystem::Overclock(void)
+{
+   if(mSystemCPUSleep) return;
+
+   ULONG temp = mSystemCycleCount;
+
+   // Step the processor through 1 instruction
+   mCpu->Update();
+
+   mSystemCycleCount = temp;
+}
+
+void CSystem::SetRegs(C6502_REGS &regs) 
+{
+    mCpu->SetRegs(regs);
+};
+
+void CSystem::GetRegs(C6502_REGS &regs) 
+{
+    mCpu->GetRegs(regs);
+};
 
 void CSystem::HLE_BIOS_FE00(void)
 {
@@ -362,27 +397,27 @@ void CSystem::HLE_BIOS_FF80(void)
 
 void CSystem::Reset(void)
 {
-   gSystemCycleCount=0;
-   gLastRunCycleCount=0;
-   gNextTimerEvent=0;
-   gCPUBootAddress=0;
-   gBreakpointHit=FALSE;
-   gSingleStepMode=FALSE;
-   gSingleStepModeSprites=FALSE;
-   gSystemIRQ=FALSE;
-   gSystemNMI=FALSE;
-   gSystemCPUSleep=FALSE;
-   gSystemHalt=FALSE;
+   mSystemCycleCount = 0;
+   mLastRunCycleCount=0;
+   mNextTimerEvent=0;
+   mCPUBootAddress=0;
+   mBreakpointHit=FALSE;
+   mSingleStepMode=FALSE;
+   mSingleStepModeSprites=FALSE;
+   mSystemIRQ=FALSE;
+   mSystemNMI=FALSE;
+   mSystemCPUSleep=FALSE;
+   mSystemHalt=FALSE;
 
-   gThrottleLastTimerCount=0;
-   gThrottleNextCycleCheckpoint=0;
+   mThrottleLastTimerCount=0;
+   mThrottleNextCycleCheckpoint=0;
 
-   gTimerCount=0;
+   mTimerCount=0;
 
-   gAudioBufferPointer=0;
-   gAudioLastUpdateCycle=0;
-//	memset(gAudioBuffer,128,HANDY_AUDIO_BUFFER_SIZE); // only for unsigned 8bit
-	memset(gAudioBuffer,0,HANDY_AUDIO_BUFFER_SIZE); // for unsigned 8/16 bit
+   mAudioBufferPointer=0;
+   mAudioLastUpdateCycle=0;
+//	memset(mAudioBuffer,128,HANDY_AUDIO_BUFFER_SIZE); // only for unsigned 8bit
+	memset(mAudioBuffer,0,HANDY_AUDIO_BUFFER_SIZE); // for unsigned 8/16 bit
 
    mMemMap->Reset();
    mCart->Reset();
@@ -400,7 +435,7 @@ void CSystem::Reset(void)
 
       C6502_REGS regs;
       mCpu->GetRegs(regs);
-      regs.PC=(UWORD)gCPUBootAddress;
+      regs.PC=(UWORD)mCPUBootAddress;
       mCpu->SetRegs(regs);
    } else {
       if(!mRom->mValid) {
@@ -457,26 +492,26 @@ bool CSystem::ContextSave(LSS_FILE *fp)
    if(!lss_printf(fp, "CSystem::ContextSave")) status=0;
 
    if(!lss_write(&mCycleCountBreakpoint,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSystemCycleCount,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gNextTimerEvent,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gCPUWakeupTime,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gCPUBootAddress,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gIRQEntryCycle,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gBreakpointHit,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSingleStepMode,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSystemIRQ,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSystemNMI,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSystemCPUSleep,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSystemCPUSleep_Saved,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gSystemHalt,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gThrottleMaxPercentage,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gThrottleLastTimerCount,sizeof(ULONG),1,fp)) status=0;
-   if(!lss_write(&gThrottleNextCycleCheckpoint,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSystemCycleCount,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mNextTimerEvent,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mCPUWakeupTime,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mCPUBootAddress,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mIRQEntryCycle,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mBreakpointHit,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSingleStepMode,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSystemIRQ,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSystemNMI,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSystemCPUSleep,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSystemCPUSleep_Saved,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mSystemHalt,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mThrottleMaxPercentage,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mThrottleLastTimerCount,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mThrottleNextCycleCheckpoint,sizeof(ULONG),1,fp)) status=0;
 
-   ULONG tmp=gTimerCount;
+   ULONG tmp=mTimerCount;
    if(!lss_write(&tmp,sizeof(ULONG),1,fp)) status=0;
 
-   if(!lss_write(&gAudioLastUpdateCycle,sizeof(ULONG),1,fp)) status=0;
+   if(!lss_write(&mAudioLastUpdateCycle,sizeof(ULONG),1,fp)) status=0;
 
    // Save other device contexts
    if(!mMemMap->ContextSave(fp)) status=0;
@@ -522,27 +557,27 @@ bool CSystem::ContextLoad(LSS_FILE *fp)
       if(strcmp(teststr,"CSystem::ContextSave")!=0) status=0;
 
       if(!lss_read(&mCycleCountBreakpoint,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSystemCycleCount,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gNextTimerEvent,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gCPUWakeupTime,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gCPUBootAddress,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gIRQEntryCycle,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gBreakpointHit,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSingleStepMode,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSystemIRQ,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSystemNMI,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSystemCPUSleep,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSystemCPUSleep_Saved,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gSystemHalt,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gThrottleMaxPercentage,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gThrottleLastTimerCount,sizeof(ULONG),1,fp)) status=0;
-      if(!lss_read(&gThrottleNextCycleCheckpoint,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSystemCycleCount,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mNextTimerEvent,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mCPUWakeupTime,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mCPUBootAddress,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mIRQEntryCycle,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mBreakpointHit,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSingleStepMode,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSystemIRQ,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSystemNMI,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSystemCPUSleep,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSystemCPUSleep_Saved,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mSystemHalt,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mThrottleMaxPercentage,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mThrottleLastTimerCount,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mThrottleNextCycleCheckpoint,sizeof(ULONG),1,fp)) status=0;
 
       ULONG tmp;
       if(!lss_read(&tmp,sizeof(ULONG),1,fp)) status=0;
-      gTimerCount=tmp;
+      mTimerCount=tmp;
 
-      if(!lss_read(&gAudioLastUpdateCycle,sizeof(ULONG),1,fp)) status=0;
+      if(!lss_read(&mAudioLastUpdateCycle,sizeof(ULONG),1,fp)) status=0;
 
       if(!mMemMap->ContextLoad(fp)) status=0;
       // Legacy support
@@ -558,7 +593,7 @@ bool CSystem::ContextLoad(LSS_FILE *fp)
       if(!mCpu->ContextLoad(fp)) status=0;
       if(!mEEPROM->ContextLoad(fp)) status=0;
 
-      gAudioBufferPointer = 0;
+      mAudioBufferPointer = 0;
    } else {
       handy_log(RETRO_LOG_ERROR, "Not a recognised LSS file\n");
    }

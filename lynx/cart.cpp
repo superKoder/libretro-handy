@@ -52,7 +52,7 @@
 #include "handy.h"
 #include "cart_db.h"
 
-CCart::CCart(const UBYTE *gamedata, ULONG gamesize)
+CCart::CCart(CSystem &parent, const UBYTE *gamedata, ULONG gamesize) : mSystem(parent)
 {
    int headersize=0;
    LYNX_HEADER header;
@@ -278,7 +278,7 @@ CCart::CCart(const UBYTE *gamedata, ULONG gamesize)
    if(gamesize) {
       // As this is a cartridge boot unset the boot address
 
-      gCPUBootAddress=0;
+      mSystem.mCPUBootAddress=0;
 
       //
       // Check if this is a headerless cart, either 410 (EPYX_HEADER_NEW) or 512 (EPYX_HEADER_OLD) zeros
@@ -433,8 +433,6 @@ inline UBYTE CCart::Peek(ULONG addr)
 
 void CCart::CartAddressStrobe(bool strobe)
 {
-   static int last_strobe=0;
-
    mStrobe=strobe;
 
    if(mStrobe) mCounter=0;
@@ -444,13 +442,13 @@ void CCart::CartAddressStrobe(bool strobe)
    //
    // if(!strobe && last_strobe)
    //
-   if(mStrobe && !last_strobe) {
+   if(mStrobe && !mLastStrobe) {
       // Clock a bit into the shifter
       mShifter=mShifter<<1;
       mShifter+=mAddrData?1:0;
       mShifter&=0xff;
    }
-   last_strobe=mStrobe;
+   mLastStrobe=mStrobe;
 }
 
 void CCart::CartAddressData(bool data)
