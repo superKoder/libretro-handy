@@ -6,6 +6,11 @@
 #include <streams/file_stream.h>
 
 #include "handy.h"
+#include "multi/multi_system.h"
+#include "multi/layout.h"
+
+#define PLAYERS 4
+#define ENABLE_COMLYNX false
 
 #ifdef _3DS
 extern "C" void* linearMemAlign(size_t size, size_t alignment);
@@ -19,29 +24,44 @@ static retro_environment_t environ_cb;
 static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_state_cb;
 
-static CSystem *lynx = NULL;
+static MultiSystem *lynxes = nullptr;
 
 static int16_t *soundBuffer = NULL;
 
-#define RETRO_LYNX_WIDTH  160
-#define RETRO_LYNX_HEIGHT 102
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
-#define RETRO_LYNX_ROTATE_AUTO 255
+#define RETRO_SINGLE_LYNX_WIDTH HANDY_SCREEN_WIDTH
+#define RETRO_SINGLE_LYNX_HEIGHT HANDY_SCREEN_HEIGHT
+
+static Layout layout(PLAYERS, HANDY_SCREEN_WIDTH, HANDY_SCREEN_HEIGHT);
+
+#define RETRO_LYNX_MP_WIDTH layout.total_pixels.x
+#define RETRO_LYNX_MP_HEIGHT layout.total_pixels.y
+
+#define RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT (MAX(RETRO_LYNX_MP_WIDTH, RETRO_LYNX_MP_HEIGHT))
+
+#define RETRO_LYNX_ROTATE_AUTO Layout::Orientation::Auto;
 
 /* Note: Set 75Hz here to reflect the nominal
  * maximum of the Lynx hardware; actual 'core
  * options' default is 60Hz */
-static uint16_t retro_refresh_rate  = 75;
+static uint16_t retro_refresh_rate = 75;
 static ULONG retro_cycles_per_frame = (HANDY_SYSTEM_FREQ / 75);
 
 static bool retro_refresh_rate_updated = false;
 
 // core options
-static uint8_t lynx_rot         = RETRO_LYNX_ROTATE_AUTO;
-static uint8_t lynx_width       = RETRO_LYNX_WIDTH;
-static uint8_t lynx_height      = RETRO_LYNX_HEIGHT;
-static uint8_t lynx_width_next  = RETRO_LYNX_WIDTH;
-static uint8_t lynx_height_next = RETRO_LYNX_HEIGHT;
+static Layout::Orientation lynx_rot = RETRO_LYNX_ROTATE_AUTO;
+static unsigned lynx_single_width = RETRO_SINGLE_LYNX_WIDTH;
+static unsigned lynx_single_height = RETRO_SINGLE_LYNX_HEIGHT;
+static unsigned lynx_single_width_next = RETRO_SINGLE_LYNX_WIDTH;
+static unsigned lynx_single_height_next = RETRO_SINGLE_LYNX_HEIGHT;
+static unsigned lynx_multi_width = RETRO_LYNX_MP_WIDTH;
+static unsigned lynx_multi_height = RETRO_LYNX_MP_HEIGHT;
+static unsigned lynx_multi_width_next = RETRO_LYNX_MP_WIDTH;
+static unsigned lynx_multi_height_next = RETRO_LYNX_MP_HEIGHT;
 
 typedef enum
 {
@@ -60,60 +80,59 @@ static int RETRO_PIX_DEPTH = 16;
 static int RETRO_PIX_DEPTH = 15;
 #endif
 
-static uint8_t *framebuffer = NULL;
+static DisplayBufferPointer framebuffer = nullptr;
 
-static bool frame_available   = false;
-static bool initialized       = false;
+static bool initialized = false;
 static bool video_out_enabled = false;
 
 struct map { unsigned retro; unsigned lynx; };
 
 static map btn_map_no_rot[] = {
-   { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
-   { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
-   { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_RIGHT },
-   { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_LEFT },
-   { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_UP },
-   { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_DOWN },
-   { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
-   { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
-   { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
+    { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
+    { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
+    { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_RIGHT },
+    { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_LEFT },
+    { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_UP },
+    { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_DOWN },
+    { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
+    { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
+    { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
 };
 
 static map btn_map_rot_270[] = {
-   { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
-   { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
-   { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_UP },
-   { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_DOWN },
-   { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_LEFT },
-   { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_RIGHT },
-   { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
-   { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
-   { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
+    { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
+    { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
+    { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_UP },
+    { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_DOWN },
+    { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_LEFT },
+    { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_RIGHT },
+    { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
+    { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
+    { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
 };
 
 static map btn_map_rot_180[] = {
-   { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
-   { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
-   { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_LEFT },
-   { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_RIGHT },
-   { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_DOWN },
-   { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_UP },
-   { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
-   { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
-   { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
+    { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
+    { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
+    { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_LEFT },
+    { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_RIGHT },
+    { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_DOWN },
+    { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_UP },
+    { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
+    { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
+    { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
 };
 
 static map btn_map_rot_90[] = {
-   { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
-   { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
-   { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_DOWN },
-   { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_UP },
-   { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_RIGHT },
-   { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_LEFT },
-   { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
-   { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
-   { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
+    { RETRO_DEVICE_ID_JOYPAD_A, BUTTON_A },
+    { RETRO_DEVICE_ID_JOYPAD_B, BUTTON_B },
+    { RETRO_DEVICE_ID_JOYPAD_RIGHT, BUTTON_DOWN },
+    { RETRO_DEVICE_ID_JOYPAD_LEFT, BUTTON_UP },
+    { RETRO_DEVICE_ID_JOYPAD_UP, BUTTON_RIGHT },
+    { RETRO_DEVICE_ID_JOYPAD_DOWN, BUTTON_LEFT },
+    { RETRO_DEVICE_ID_JOYPAD_L, BUTTON_OPT1 },
+    { RETRO_DEVICE_ID_JOYPAD_R, BUTTON_OPT2 },
+    { RETRO_DEVICE_ID_JOYPAD_START, BUTTON_PAUSE },
 };
 
 static map* btn_map;
@@ -142,7 +161,7 @@ static bool libretro_supports_option_categories = false;
 static unsigned retro_overclock = 1;
 
 static void retro_audio_buff_status_cb(
-      bool active, unsigned occupancy, bool underrun_likely)
+    bool active, unsigned occupancy, bool underrun_likely)
 {
    retro_audio_buff_active    = active;
    retro_audio_buff_occupancy = occupancy;
@@ -157,10 +176,10 @@ static void init_frameskip(void)
 
       buf_status_cb.callback = retro_audio_buff_status_cb;
       if (!environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK,
-            &buf_status_cb))
+                      &buf_status_cb))
       {
          handy_log(RETRO_LOG_WARN,
-               "Frameskip disabled - frontend does not support audio buffer status monitoring.\n");
+                   "Frameskip disabled - frontend does not support audio buffer status monitoring.\n");
 
          retro_audio_buff_active    = false;
          retro_audio_buff_occupancy = 0;
@@ -228,19 +247,19 @@ static lynx_lcd_ghosting_t lynx_lcd_ghosting = LCD_GHOSTING_NONE;
    typename_t *video_a = (typename_t*)framebuffer; \
    typename_t *video_b = (typename_t*)framebuffer_history_1; \
    size_t i; \
-\
+                                                                                                  \
    for (i = 0; i < HANDY_SCREEN_WIDTH * HANDY_SCREEN_WIDTH; i++) \
    { \
       typename_t color_a   = *video_a; \
       typename_t color_b   = *video_b; \
       /* ab */ \
       typename_t color_mix = (color_a  + color_b  - ((color_a  ^ color_b)  & color_mix_lsb)) >> 1; \
-\
+                                                                                                  \
       /* Result: 0.5a + 0.5b */ \
       *video_a++ = color_mix; \
       *video_b++ = color_a; \
    } \
-}
+   }
 
 #define LCD_GHOSTING_APPLY_3FRAMES(typename_t, color_mix_lsb) \
 { \
@@ -248,7 +267,7 @@ static lynx_lcd_ghosting_t lynx_lcd_ghosting = LCD_GHOSTING_NONE;
    typename_t *video_b = (typename_t*)framebuffer_history_1; \
    typename_t *video_c = (typename_t*)framebuffer_history_2; \
    size_t i; \
-\
+                                                                                                      \
    for (i = 0; i < HANDY_SCREEN_WIDTH * HANDY_SCREEN_WIDTH; i++) \
    { \
       typename_t color_a   = *video_a; \
@@ -257,14 +276,14 @@ static lynx_lcd_ghosting_t lynx_lcd_ghosting = LCD_GHOSTING_NONE;
       typename_t color_ab  = (color_a  + color_b  - ((color_a  ^ color_b)  & color_mix_lsb)) >> 1; \
       typename_t color_bc  = (color_b  + color_c  - ((color_b  ^ color_c)  & color_mix_lsb)) >> 1; \
       /* ab|bc */ \
-      typename_t color_mix = (color_ab + color_bc + ((color_ab ^ color_bc) & color_mix_lsb)) >> 1; \
-\
+         typename_t color_mix = (color_ab + color_bc + ((color_ab ^ color_bc) & color_mix_lsb)) >> 1; \
+                                                                                                      \
       /* Result: 0.25a + 0.5b + 0.25c */ \
       *video_a++ = color_mix; \
       *video_b++ = color_a; \
       *video_c++ = color_b; \
    } \
-}
+   }
 
 #define LCD_GHOSTING_APPLY_4FRAMES(typename_t, color_mix_lsb) \
 { \
@@ -273,7 +292,7 @@ static lynx_lcd_ghosting_t lynx_lcd_ghosting = LCD_GHOSTING_NONE;
    typename_t *video_c = (typename_t*)framebuffer_history_2; \
    typename_t *video_d = (typename_t*)framebuffer_history_3; \
    size_t i; \
-\
+                                                                                                      \
    for (i = 0; i < HANDY_SCREEN_WIDTH * HANDY_SCREEN_WIDTH; i++) \
    { \
       typename_t color_a   = *video_a; \
@@ -287,14 +306,14 @@ static lynx_lcd_ghosting_t lynx_lcd_ghosting = LCD_GHOSTING_NONE;
       typename_t color_mix = (color_bc  + color_cd + ((color_bc  ^ color_cd) & color_mix_lsb)) >> 1; \
       /* (bc|cd)|ab */ \
       color_mix            = (color_mix + color_ab + ((color_mix ^ color_ab) & color_mix_lsb)) >> 1; \
-\
+                                                                                                      \
       /* Result: 0.25a + 0.375b + 0.25c +  0.125d */ \
       *video_a++ = color_mix; \
       *video_b++ = color_a; \
       *video_c++ = color_b; \
       *video_d++ = color_c; \
    } \
-}
+   }
 
 static void lcd_ghosting_apply_2frames_555(void)
 {
@@ -343,10 +362,11 @@ static void lcd_ghosting_apply_4frames_888(void)
 
 static void (*lcd_ghosting_apply)(void) = NULL;
 
+// TODO: Not ready for multi screen!!
 static void lcd_ghosting_init(void)
 {
    size_t history_buffer_size =
-         RETRO_LYNX_WIDTH * RETRO_LYNX_WIDTH * sizeof(uint8_t);
+       RETRO_SINGLE_LYNX_WIDTH * RETRO_SINGLE_LYNX_WIDTH * sizeof(uint8_t);
 
    /* Disable ghosting by default */
    lcd_ghosting_apply = NULL;
@@ -389,72 +409,72 @@ static void lcd_ghosting_init(void)
    /* Assign ghosting function pointer */
    switch (RETRO_PIX_DEPTH)
    {
-      case 24:
-         switch (lynx_lcd_ghosting)
-         {
-            case LCD_GHOSTING_2FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_2frames_888;
-               break;
-            case LCD_GHOSTING_3FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_3frames_888;
-               break;
-            case LCD_GHOSTING_4FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_4frames_888;
-               break;
-            default:
-               goto error;
-         }
+   case 24:
+      switch (lynx_lcd_ghosting)
+      {
+      case LCD_GHOSTING_2FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_2frames_888;
          break;
-      case 15:
-         switch (lynx_lcd_ghosting)
-         {
-            case LCD_GHOSTING_2FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_2frames_555;
-               break;
-            case LCD_GHOSTING_3FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_3frames_555;
-               break;
-            case LCD_GHOSTING_4FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_4frames_555;
-               break;
-            default:
-               goto error;
-         }
+      case LCD_GHOSTING_3FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_3frames_888;
          break;
-      case 16:
+      case LCD_GHOSTING_4FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_4frames_888;
+         break;
       default:
-#if defined(ABGR1555)
-         switch (lynx_lcd_ghosting)
-         {
-            case LCD_GHOSTING_2FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_2frames_555;
-               break;
-            case LCD_GHOSTING_3FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_3frames_555;
-               break;
-            case LCD_GHOSTING_4FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_4frames_555;
-               break;
-            default:
-               goto error;
-         }
-#else
-         switch (lynx_lcd_ghosting)
-         {
-            case LCD_GHOSTING_2FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_2frames_565;
-               break;
-            case LCD_GHOSTING_3FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_3frames_565;
-               break;
-            case LCD_GHOSTING_4FRAMES:
-               lcd_ghosting_apply = lcd_ghosting_apply_4frames_565;
-               break;
-            default:
-               goto error;
-         }
-#endif
+         goto error;
+      }
+      break;
+   case 15:
+      switch (lynx_lcd_ghosting)
+      {
+      case LCD_GHOSTING_2FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_2frames_555;
          break;
+      case LCD_GHOSTING_3FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_3frames_555;
+         break;
+      case LCD_GHOSTING_4FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_4frames_555;
+         break;
+      default:
+         goto error;
+      }
+      break;
+   case 16:
+   default:
+#if defined(ABGR1555)
+      switch (lynx_lcd_ghosting)
+      {
+      case LCD_GHOSTING_2FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_2frames_555;
+         break;
+      case LCD_GHOSTING_3FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_3frames_555;
+         break;
+      case LCD_GHOSTING_4FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_4frames_555;
+         break;
+      default:
+         goto error;
+      }
+#else
+      switch (lynx_lcd_ghosting)
+      {
+      case LCD_GHOSTING_2FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_2frames_565;
+         break;
+      case LCD_GHOSTING_3FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_3frames_565;
+         break;
+      case LCD_GHOSTING_4FRAMES:
+         lcd_ghosting_apply = lcd_ghosting_apply_4frames_565;
+         break;
+      default:
+         goto error;
+      }
+#endif
+      break;
    }
 
    return;
@@ -503,7 +523,7 @@ void handy_log(enum retro_log_level level, const char *format, ...)
       log_cb(level, "[Handy] %s", msg);
    else
       fprintf((level == RETRO_LOG_ERROR) ? stderr : stdout,
-            "[Handy] %s", msg);
+              "[Handy] %s", msg);
 }
 
 static void check_color_depth(void)
@@ -518,7 +538,7 @@ static void check_color_depth(void)
       if(!environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &rgb888))
       {
          handy_log(RETRO_LOG_ERROR,
-               "Pixel format XRGB8888 not supported by platform.\n");
+                   "Pixel format XRGB8888 not supported by platform.\n");
 
          RETRO_PIX_BYTES = 2;
 #if defined(FRONTEND_SUPPORTS_RGB565)
@@ -549,7 +569,7 @@ static void check_color_depth(void)
       if (environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &rgb565))
       {
          handy_log(RETRO_LOG_INFO,
-               "Frontend supports RGB565 - will use that instead of XRGB1555.\n");
+                   "Frontend supports RGB565 - will use that instead of XRGB1555.\n");
 
          RETRO_PIX_DEPTH = 16;
       }
@@ -559,7 +579,7 @@ static void check_color_depth(void)
       if (environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &rgb555))
       {
          handy_log(RETRO_LOG_INFO,
-               "Using default 0RGB1555 pixel format.\n");
+                   "Using default 0RGB1555 pixel format.\n");
 
          RETRO_PIX_DEPTH = 15;
       }
@@ -588,153 +608,109 @@ static void update_timing(void)
 
 static void lynx_rotate(void);
 
-static UBYTE* lynx_display_callback(ULONG objref)
-{
-   if(!video_out_enabled)
-      return (UBYTE*)framebuffer;
-
-   /* lynx_display_callback() may be called multiple
-    * times per retro_run(). Ensure that video_cb()
-    * is only called once per retro_run(). */
-   if (!frame_available)
-   {
-      if (lynx->mSkipFrame)
-         video_cb(NULL, lynx_width, lynx_height,
-               RETRO_LYNX_WIDTH * RETRO_PIX_BYTES);
-      else
-      {
-         /* Check whether current frame has a different
-          * rotation from the previous one; if so,
-          * notify the frontend before drawing it */
-         if (lynx_rotation_pending == ROTATION_PENDING_FRONTEND)
-         {
-            lynx_rotation_pending = ROTATION_PENDING_NONE;
-            lynx_width            = lynx_width_next;
-            lynx_height           = lynx_height_next;
-            update_geometry();
-         }
-
-         if (lcd_ghosting_apply)
-            lcd_ghosting_apply();
-
-         video_cb(framebuffer, lynx_width, lynx_height,
-               RETRO_LYNX_WIDTH * RETRO_PIX_BYTES);
-      }
-
-      /* Check whether the next frame should be
-       * rendered with a change in rotation */
-      if (lynx_rotation_pending == ROTATION_PENDING_CORE)
-      {
-         lynx_rotation_pending = ROTATION_PENDING_FRONTEND;
-         /* An annoyance: lynx_rotate() ends up calling
-          * lynx_display_callback(), so to avoid infinite
-          * circular recursion we must temporarily disable
-          * lynx_display_callback()... */
-         video_out_enabled = false;
-         lynx_rotate();
-         video_out_enabled = true;
-      }
-
-      frame_available = true;
-      /* Must unset mSkipFrame here since the next
-       * frame may be (partially) drawn before the
-       * current retro_run() returns, and we will not
-       * know if this frame is needed until the *next*
-       * call of retro_run()... */
-      lynx->mSkipFrame = 0;
-   }
-
-   return (UBYTE*)framebuffer;
+DisplayBufferPointer GetFrameBuffer() {
+   return framebuffer;
 }
 
 static void lynx_rotate(void)
 {
-   if (!lynx)
+   // TODO: We probably don't need this code anymore, now that we have Layout.
+
+   if (!lynxes)
       return;
 
-   if (lynx_rot == RETRO_LYNX_ROTATE_AUTO)
+   if (lynx_rot == Layout::Orientation::Auto)
    {
-      switch (lynx->CartGetRotate())
+      switch (lynxes->GetCartRotation())
       {
-         case CART_ROTATE_LEFT: lynx_rot = MIKIE_ROTATE_L; break;
-         case CART_ROTATE_RIGHT: lynx_rot = MIKIE_ROTATE_R; break;
-         default: lynx_rot = MIKIE_NO_ROTATE; break;
+      case Layout::Orientation::Left:
+         lynx_rot = Layout::Orientation::Left;
+         break;
+      case Layout::Orientation::Right:
+         lynx_rot = Layout::Orientation::Right;
+         break;
+      default:
+         lynx_rot = Layout::Orientation::None;
+         break;
       }
    }
 
    switch (lynx_rot)
    {
-      default:
-         lynx_rot = MIKIE_NO_ROTATE;
-         // intentional fall-through
+   default:
+      lynx_rot = Layout::Orientation::None;
+      // intentional fall-through
 
-      case MIKIE_NO_ROTATE:
-         lynx_width_next  = RETRO_LYNX_WIDTH;
-         lynx_height_next = RETRO_LYNX_HEIGHT;
-         btn_map          = btn_map_no_rot;
-         break;
+   case Layout::Orientation::None:
+      lynx_single_width_next = RETRO_SINGLE_LYNX_WIDTH;
+      lynx_single_height_next = RETRO_SINGLE_LYNX_HEIGHT;
+      lynx_multi_width_next = RETRO_LYNX_MP_WIDTH;
+      lynx_multi_height_next = RETRO_LYNX_MP_HEIGHT;
+      btn_map = btn_map_no_rot;
+      break;
 
-      case MIKIE_ROTATE_R:
-         lynx_width_next  = RETRO_LYNX_HEIGHT;
-         lynx_height_next = RETRO_LYNX_WIDTH;
-         btn_map          = btn_map_rot_90;
-         break;
+   case Layout::Orientation::Right:
+      lynx_single_width_next = RETRO_SINGLE_LYNX_HEIGHT;
+      lynx_single_height_next = RETRO_SINGLE_LYNX_WIDTH;
+      lynx_multi_width_next = RETRO_LYNX_MP_HEIGHT;
+      lynx_multi_height_next = RETRO_LYNX_MP_WIDTH;
+      btn_map = btn_map_rot_90;
+      break;
 
-      case MIKIE_ROTATE_B:
-         lynx_width_next  = RETRO_LYNX_WIDTH;
-         lynx_height_next = RETRO_LYNX_HEIGHT;
-         btn_map          = btn_map_rot_180;
-         break;
+   case Layout::Orientation::Flip:
+      lynx_single_width_next = RETRO_SINGLE_LYNX_WIDTH;
+      lynx_single_height_next = RETRO_SINGLE_LYNX_HEIGHT;
+      lynx_multi_width_next = RETRO_LYNX_MP_WIDTH;
+      lynx_multi_height_next = RETRO_LYNX_MP_HEIGHT;
+      btn_map = btn_map_rot_180;
+      break;
 
-      case MIKIE_ROTATE_L:
-         lynx_width_next  = RETRO_LYNX_HEIGHT;
-         lynx_height_next = RETRO_LYNX_WIDTH;
-         btn_map          = btn_map_rot_270;
-         break;
+   case Layout::Orientation::Left:
+      lynx_single_width_next = RETRO_SINGLE_LYNX_HEIGHT;
+      lynx_single_height_next = RETRO_SINGLE_LYNX_WIDTH;
+      lynx_multi_width_next = RETRO_LYNX_MP_HEIGHT;
+      lynx_multi_height_next = RETRO_LYNX_MP_WIDTH;
+      btn_map = btn_map_rot_270;
+      break;
    }
 
    switch (RETRO_PIX_DEPTH)
    {
-      case 15:
-         lynx->DisplaySetAttributes(lynx_rot,
-               MIKIE_PIXEL_FORMAT_16BPP_555,
-               RETRO_LYNX_WIDTH * 2,
-               lynx_display_callback, (ULONG)0);
-         break;
+   case 15:   
+      lynxes->DisplaySetAttributes(lynx_rot,
+                                   PixelFormat::RGB16_555,
+                                   RETRO_SINGLE_LYNX_WIDTH * 2,
+                                   GetFrameBuffer);
+      break;
 #if defined(ABGR1555)
-      case 16:
-         lynx->DisplaySetAttributes(lynx_rot,
-               MIKIE_PIXEL_FORMAT_16BPP_BGR555,
-               RETRO_LYNX_WIDTH * 2,
-               lynx_display_callback, (ULONG)0);
-         break;
+   case 16:
+      lynxes->DisplaySetAttributes(lynx_rot,
+                                   PixelFormat::BGR16_555,
+                                   RETRO_SINGLE_LYNX_WIDTH * 2,
+                                   GetFrameBuffer);
+      break;
 #else
-      case 16:
-         lynx->DisplaySetAttributes(lynx_rot,
-               MIKIE_PIXEL_FORMAT_16BPP_565,
-               RETRO_LYNX_WIDTH * 2,
-               lynx_display_callback, (ULONG)0);
-         break;
+   case 16:
+      lynxes->DisplaySetAttributes(lynx_rot,
+                                   PixelFormat::RGB16_565,
+                                   RETRO_SINGLE_LYNX_WIDTH * 2,
+                                   GetFrameBuffer);
+      break;
 #endif
-      case 24:
-         lynx->DisplaySetAttributes(lynx_rot,
-               MIKIE_PIXEL_FORMAT_32BPP,
-               RETRO_LYNX_WIDTH * 4,
-               lynx_display_callback, (ULONG)0);
-         break;
-      default:
-         lynx->DisplaySetAttributes(lynx_rot,
-               MIKIE_PIXEL_FORMAT_32BPP,
-               RETRO_LYNX_WIDTH * 4,
-               lynx_display_callback, (ULONG)0);
-         break;
+   case 24:
+   default:
+      lynxes->DisplaySetAttributes(lynx_rot,
+                                   PixelFormat::RGB32,
+                                   RETRO_SINGLE_LYNX_WIDTH * 4,
+                                   GetFrameBuffer);
+      break;
    }
 }
 
 static void check_variables(void)
 {
    struct retro_variable var = {0};
-   unsigned old_lynx_rot;
+   Layout::Orientation old_lynx_rot;
    unsigned old_frameskip_type;
    uint16_t old_retro_refresh_rate;
    lynx_lcd_ghosting_t old_lynx_lcd_ghosting;
@@ -747,13 +723,13 @@ static void check_variables(void)
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
       if (strcmp(var.value, "None") == 0)
-         lynx_rot = MIKIE_NO_ROTATE;
+         lynx_rot = Layout::Orientation::None;
       else if (strcmp(var.value, "90") == 0)
-         lynx_rot = MIKIE_ROTATE_R; 
+         lynx_rot = Layout::Orientation::Right;
       else if (strcmp(var.value, "180") == 0)
-         lynx_rot = MIKIE_ROTATE_B; 
+         lynx_rot = Layout::Orientation::Flip;
       else if (strcmp(var.value, "270") == 0)
-         lynx_rot = MIKIE_ROTATE_L;
+         lynx_rot = Layout::Orientation::Left;
       else if (strcmp(var.value, "Auto") == 0)
          lynx_rot = RETRO_LYNX_ROTATE_AUTO;
 
@@ -861,7 +837,7 @@ void retro_init(void)
       log_cb = log.log;
 
    environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS,
-         &serialization_quirks);
+              &serialization_quirks);
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
       libretro_supports_input_bitmasks = true;
@@ -878,20 +854,18 @@ void retro_init(void)
 
 void retro_reset(void)
 {
-   if(lynx)
-   {
-      lynx->SaveEEPROM();
-      lynx->Reset();
+   if (lynxes) {
+      lynxes->SaveEEPROM();
+      lynxes->Reset();
    }
 }
 
 void retro_deinit(void)
 {
-   if(lynx)
-   {
-      lynx->SaveEEPROM();
-      delete lynx;
-      lynx=0;
+   if (lynxes) {
+      lynxes->SaveEEPROM();
+      delete lynxes;
+      lynxes = nullptr;
    }
 
    if (framebuffer)
@@ -908,10 +882,17 @@ void retro_deinit(void)
    lynx_rotation_pending            = ROTATION_PENDING_NONE;
    lynx_rotation_button_down        = false;
    lynx_rot                         = RETRO_LYNX_ROTATE_AUTO;
-   lynx_width                       = RETRO_LYNX_WIDTH;
-   lynx_height                      = RETRO_LYNX_HEIGHT;
-   lynx_width_next                  = RETRO_LYNX_WIDTH;
-   lynx_height_next                 = RETRO_LYNX_HEIGHT;
+   
+   lynx_single_width                = RETRO_SINGLE_LYNX_WIDTH;
+   lynx_single_height               = RETRO_SINGLE_LYNX_HEIGHT;
+   lynx_single_width_next           = RETRO_SINGLE_LYNX_WIDTH;
+   lynx_single_height_next          = RETRO_SINGLE_LYNX_HEIGHT;
+   
+   lynx_multi_width                 = RETRO_LYNX_MP_WIDTH;
+   lynx_multi_height                = RETRO_LYNX_MP_HEIGHT;
+   lynx_multi_width_next            = RETRO_LYNX_MP_WIDTH;
+   lynx_multi_height_next           = RETRO_LYNX_MP_HEIGHT;
+   
    initialized                      = false;
    video_out_enabled                = false;
 }
@@ -920,18 +901,18 @@ void retro_set_environment(retro_environment_t cb)
 {
    struct retro_vfs_interface_info vfs_iface_info;
    static const struct retro_system_content_info_override content_overrides[] = {
-      {
+       {
          "lnx|lyx|o", /* extensions */
          false,   /* need_fullpath */
          false    /* persistent_data */
-      },
+       },
       { NULL, false, false }
    };
 
    environ_cb = cb;
 
    libretro_set_core_options(environ_cb,
-         &libretro_supports_option_categories);
+                             &libretro_supports_option_categories);
 
    vfs_iface_info.required_interface_version = 1;
    vfs_iface_info.iface                      = NULL;
@@ -978,7 +959,7 @@ void retro_get_system_info(struct retro_system_info *info)
    info->library_version  = HANDY_MP_VER GIT_VERSION;
    info->need_fullpath    = true;
    info->valid_extensions = "lnx|o";
-   info->block_extract = 0;
+   info->block_extract    = 0;
 }
 
 void retro_get_system_av_info(struct retro_system_av_info *info)
@@ -988,74 +969,102 @@ void retro_get_system_av_info(struct retro_system_av_info *info)
    info->timing.fps            = (double)retro_refresh_rate;
    info->timing.sample_rate    = (double)HANDY_AUDIO_SAMPLE_FREQ;
 
-   info->geometry.base_width   = lynx_width;
-   info->geometry.base_height  = lynx_height;
-   info->geometry.max_width    = RETRO_LYNX_WIDTH;
-   info->geometry.max_height   = RETRO_LYNX_WIDTH;
-   info->geometry.aspect_ratio = (float)lynx_width / (float)lynx_height;
+   info->geometry.base_width   = lynx_multi_width;
+   info->geometry.base_height  = lynx_multi_height;
+   info->geometry.max_width    = RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT,
+   info->geometry.max_height   = RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT,
+   info->geometry.aspect_ratio = (float)lynx_multi_width / (float)lynx_multi_height;
+}
+
+inline static unsigned process_input_for_player(int player) {
+   unsigned i, res = 0;
+   if (libretro_supports_input_bitmasks)
+   {
+      int16_t ret = input_state_cb(player, RETRO_DEVICE_JOYPAD, 0,
+                                   RETRO_DEVICE_ID_JOYPAD_MASK);
+      for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); i++)
+         res |= ret & (1 << btn_map[i].retro) ? (btn_map[i].lynx) : 0;
+      select_button = ret & (1 << RETRO_DEVICE_ID_JOYPAD_SELECT);
+
+      return res;
+   }
+
+   {
+      for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); ++i)
+         res |= input_state_cb(player, RETRO_DEVICE_JOYPAD, 0,
+                               btn_map[i].retro)
+                    ? btn_map[i].lynx
+                    : 0;
+      select_button = input_state_cb(player, RETRO_DEVICE_JOYPAD, 0,
+                                     RETRO_DEVICE_ID_JOYPAD_SELECT);
+      return res;
+   }
+}
+
+Layout::Orientation next_rot(Layout::Orientation rotation) {
+   switch(rotation) {
+      case Layout::Orientation::None:
+         return Layout::Orientation::Left;
+      case Layout::Orientation::Left:
+         return Layout::Orientation::Flip;
+      case Layout::Orientation::Flip:
+         return Layout::Orientation::Right;
+      case Layout::Orientation::Right:
+         return Layout::Orientation::None;
+
+      default:
+         return Layout::Orientation::None;
+   }
 }
 
 void retro_run(void)
 {
-   unsigned i, res = 0;
+   static uint64_t run = 0;
+   // FakeComLynxSend(lynxes->GetSystem(0), COM_SLIMEWORLD_INIT);
+
    bool updated = false;
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
       check_variables();
+   }
 
    input_poll_cb();
-   if (libretro_supports_input_bitmasks)
-   {
-      int16_t ret = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,
-            RETRO_DEVICE_ID_JOYPAD_MASK);
-      for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); i++)
-         res |= ret & (1 << btn_map[i].retro) ? (btn_map[i].lynx) : 0;
-      select_button = ret & (1 << RETRO_DEVICE_ID_JOYPAD_SELECT);
-   }
-   else
-   {
-      for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); ++i)
-         res |= input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,
-               btn_map[i].retro) ? btn_map[i].lynx : 0;
-      select_button = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,
-            RETRO_DEVICE_ID_JOYPAD_SELECT);
-   }
-   lynx->SetButtonData(res);
+   lynxes->UpdateButtons();
 
    if (select_button && !lynx_rotation_button_down)
    {
-      lynx_rot++;
+      lynx_rot = next_rot(lynx_rot);
       lynx_rotation_pending = ROTATION_PENDING_CORE;
    }
    lynx_rotation_button_down = select_button;
 
    /* Check whether current frame should be skipped
-    * > Note: if mSkipFrame is already set, then it
+    * > Note: if mSystem.mSkipFrame is already set, then it
     *   means a frameskip was requested on the last
     *   call of retro_run() but no end of frame
     *   event occurred. We must therefore keep
-    *   mSkipFrame latched on, since any partial frame
+    *   mSystem.mSkipFrame latched on, since any partial frame
     *   from the previous retro_run() will be incomplete */
    if ((frameskip_type > 0) &&
-       !lynx->mSkipFrame &&
+       lynxes->IsNoneSkippingFrame() &&
        retro_audio_buff_active)
    {
       switch (frameskip_type)
       {
-         case 1: /* auto */
-            lynx->mSkipFrame = retro_audio_buff_underrun ? 1 : 0;
-            break;
-         case 2: /* manual */
-            lynx->mSkipFrame = (retro_audio_buff_occupancy < frameskip_threshold) ? 1 : 0;
-            break;
-         default:
-            lynx->mSkipFrame = 0;
-            break;
+      case 1: /* auto */
+         lynxes->SetIsSkippingFrame(retro_audio_buff_underrun);
+         break;
+      case 2: /* manual */
+         lynxes->SetIsSkippingFrame(retro_audio_buff_occupancy < frameskip_threshold);
+         break;
+      default:
+         lynxes->SetIsSkippingFrame(false);
+         break;
       }
 
-      if (!lynx->mSkipFrame ||
+      if (!lynxes->IsAnySkippingFrame() ||
           (frameskip_counter >= FRAMESKIP_MAX))
       {
-         lynx->mSkipFrame        = 0;
+         lynxes->SetIsSkippingFrame(false);
          frameskip_counter = 0;
       }
       else
@@ -1067,7 +1076,7 @@ void retro_run(void)
    if (update_audio_latency)
    {
       environ_cb(RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY,
-            &audio_latency);
+                 &audio_latency);
       update_audio_latency = false;
    }
 
@@ -1077,42 +1086,42 @@ void retro_run(void)
       retro_refresh_rate_updated = false;
    }
 
-   lynx->mLastRunCycleCount = lynx->mSystemCycleCount;
-   frame_available = false;
+   lynxes->NoteLastCycleCounts();
 
-   while (lynx->mSystemCycleCount - lynx->mLastRunCycleCount < retro_cycles_per_frame) {
-      lynx->Update();
-
-      for (int lcv = 1; lcv < retro_overclock; lcv++)
-         lynx->Overclock();
+   decltype(run) adjrun = run / 2;
+   if (adjrun < layout.players) {
+      for (int i = 0; i <= adjrun; ++i) {
+         lynxes->CatchUpSystem(i, retro_cycles_per_frame, retro_overclock);
+      }
+      ++run;
+   } else {
+      lynxes->CatchUpAllSystems(retro_cycles_per_frame, retro_overclock);
    }
 
-   /* If no end of frame event was produced on this
-    * run, upload NULL */
-   if (!frame_available)
-      video_cb(NULL, lynx_width, lynx_height,
-            RETRO_LYNX_WIDTH * RETRO_PIX_BYTES);
+   video_cb(framebuffer, lynx_multi_width, lynx_multi_height,
+               RETRO_LYNX_MP_WIDTH * RETRO_PIX_BYTES);
 
-   lynx->FetchAudioSamples();
+   lynxes->FetchAudioSamples();
 
-   /* Divide mAudioBufferPointer by number of channels */
-   audio_batch_cb(soundBuffer, lynx->mAudioBufferPointer >> 1);
-   lynx->mAudioBufferPointer = 0;
+   /* Divide mSystem.mAudioBufferPointer by number of channels */
+   // TODO: lynx2
+   audio_batch_cb(soundBuffer, lynxes->GetAudioBufferPointer() >> 1);
+   lynxes->SetAudioBufferPointer(0);
 }
 
 size_t retro_serialize_size(void)
 {
-   if(!lynx)
+   if (!lynxes)
       return 0;
 
-   return lynx->ContextSize();
+   return lynxes->ContextSize();
 }
 
 bool retro_serialize(void *data, size_t size)
 {
    LSS_FILE fp;
 
-   if(!lynx)
+   if (!lynxes)
       return false;
 
    fp.memptr      = (UBYTE *)data;
@@ -1120,14 +1129,14 @@ bool retro_serialize(void *data, size_t size)
    fp.index_limit = size;
    fp.nul_stream  = 0;
 
-   return lynx->ContextSave(&fp);
+   return lynxes->ContextSave(&fp);
 }
 
 bool retro_unserialize(const void *data, size_t size)
 {
    LSS_FILE fp;
 
-   if(!lynx)
+   if (!lynxes)
       return false;
 
    fp.memptr      = (UBYTE *)data;
@@ -1135,7 +1144,7 @@ bool retro_unserialize(const void *data, size_t size)
    fp.index_limit = size;
    fp.nul_stream  = 0;
 
-   return lynx->ContextLoad(&fp);
+   return lynxes->ContextLoad(&fp);
 }
 
 bool retro_load_game(const struct retro_game_info *info)
@@ -1170,11 +1179,11 @@ bool retro_load_game(const struct retro_game_info *info)
 
    /* Allocate video buffer */
 #if defined(_3DS)
-   framebuffer = (uint8_t*)linearMemAlign(
-         RETRO_LYNX_WIDTH * RETRO_LYNX_WIDTH * 4 * sizeof(uint8_t), 128);
+   framebuffer = (uint8_t *)linearMemAlign(
+       RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT * RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT * 4 * sizeof(uint8_t), 128);
 #else
-   framebuffer = (uint8_t*)calloc(1,
-         RETRO_LYNX_WIDTH * RETRO_LYNX_WIDTH * 4 * sizeof(uint8_t));
+   framebuffer = (uint8_t *)calloc(1,
+                                   RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT * RETRO_LYNX_MP_MAX_WIDTH_OR_HEIGHT * 4 * sizeof(uint8_t));
 #endif
    if (!framebuffer)
       return false;
@@ -1196,7 +1205,7 @@ bool retro_load_game(const struct retro_game_info *info)
       if (eeprom_dir)
       {
          fill_pathname_join(eeprom_file, eeprom_dir,
-               info_ext->name, sizeof(eeprom_file));
+                            info_ext->name, sizeof(eeprom_file));
          strlcat(eeprom_file, ".eeprom", sizeof(eeprom_file));
       }
    }
@@ -1221,7 +1230,7 @@ bool retro_load_game(const struct retro_game_info *info)
          path_remove_extension(content_name);
 
          fill_pathname_join(eeprom_file, eeprom_dir,
-               content_name, sizeof(eeprom_file));
+                            content_name, sizeof(eeprom_file));
          strlcat(eeprom_file, ".eeprom", sizeof(eeprom_file));
 
          free(content_name);
@@ -1230,16 +1239,16 @@ bool retro_load_game(const struct retro_game_info *info)
 
    /* Get bios path */
    if (environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &system_dir) &&
-         system_dir)
+       system_dir)
       fill_pathname_join(bios_file, system_dir,
-            ROM_FILE, sizeof(bios_file));
+                         ROM_FILE, sizeof(bios_file));
 
    if (!string_is_empty(bios_file) &&
        path_is_valid(bios_file))
       bios_found = true;
    else
       handy_log(RETRO_LOG_WARN, "BIOS file missing: %s\n",
-            string_is_empty(bios_file) ? ROM_FILE : bios_file);
+                string_is_empty(bios_file) ? ROM_FILE : bios_file);
 
    /* Initialise emulator */
    check_variables();
@@ -1247,27 +1256,33 @@ bool retro_load_game(const struct retro_game_info *info)
    init_frameskip();
    lcd_ghosting_init();
 
-   if (lynx)
+   if (lynxes)
    {
-      lynx->SaveEEPROM();
-      delete lynx;
-      lynx=0;
+      lynxes->SaveEEPROM();
+      delete lynxes;
+      lynxes = nullptr;
    }
 
-   lynx          = new CSystem(content_path, content_data, content_size,
-         bios_file, !bios_found, eeprom_file, 1);
-   lynx->mAudioEnabled = true;
-   soundBuffer   = (int16_t *)&lynx->mAudioBuffer;
+   lynxes = new MultiSystem (layout, bios_file, eeprom_file, !bios_found, process_input_for_player);
+   lynxes->BootGame(content_path, content_data, content_size, ENABLE_COMLYNX);
+
+   lynxes->SetAudioEnabled(true);
+   soundBuffer   = lynxes->GetAudioBuffer();
    btn_map       = btn_map_no_rot;
 
    /* Apply initial rotation
     * > Effect is immediate, so update actual
     *   lynx_width/lynx_height values here */
    lynx_rotate();
-   lynx_width  = lynx_width_next;
-   lynx_height = lynx_height_next;
+   lynx_single_width = lynx_single_width_next;
+   lynx_single_height = lynx_single_height_next;
 
-   lynx->mSkipFrame        = 0;
+   // TODO: multis are not correct, because the organization might change
+   layout = layout.ForOrientation(lynx_rot);
+   lynx_multi_width = lynx_multi_width_next;    // TODO: this is wrong
+   lynx_multi_height = lynx_multi_height_next;  // TODO: this is wrong
+
+   lynxes->SetIsSkippingFrame(0);
    initialized       = true;
    video_out_enabled = true;
 
@@ -1294,9 +1309,10 @@ unsigned retro_get_region(void)
 
 void *retro_get_memory_data(unsigned type)
 {
-   if (lynx && type == RETRO_MEMORY_SYSTEM_RAM)
-      return lynx->GetRamPointer();
-   return NULL;
+   // TODO: This would only work for player 1?
+   if (lynxes && type == RETRO_MEMORY_SYSTEM_RAM)
+      return lynxes->GetRamPointer();
+   return nullptr;
 }
 
 size_t retro_get_memory_size(unsigned type)
