@@ -105,7 +105,8 @@ CSystem::CSystem(const char *gamefile,
                  ULONG gamesize,
                  const char *romfile,
                  bool useEmu,
-                 const char *eepromfile)
+                 const char *eepromfile,
+                 int player_id)
  : mCart(NULL),
    mRom(NULL),
    mMemMap(NULL),

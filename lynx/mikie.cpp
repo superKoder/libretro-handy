@@ -837,20 +837,20 @@ void CMikie::ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG obj
 }
 
 
-void CMikie::DisplaySetAttributes(ULONG rotate, ULONG format, ULONG pitch, UBYTE* (*renderCallback)(ULONG objref),ULONG objref)
+void CMikie::DisplaySetAttributes(ULONG rotate, ULONG format, ULONG pitch, CMikie::DisplayCallback callback, ULONG objref)
 {
    mDisplayRotate = rotate;
    mDisplayFormat = format;
    mDisplayPitch = pitch;
-   mpDisplayCallback = renderCallback;
+   mpDisplayCallback = callback;
    mDisplayCallbackObject = objref;
 
    mpDisplayCurrent=NULL;
 
    if(mpDisplayCallback) {
-      mpDisplayBits=(*mpDisplayCallback)(mDisplayCallbackObject);
+      mpDisplayBits = mpDisplayCallback(mDisplayCallbackObject);
    } else {
-      mpDisplayBits=NULL;
+      mpDisplayBits = NULL;
    }
 
    //
@@ -1370,7 +1370,7 @@ ULONG CMikie::DisplayEndOfFrame(void)
    // Trigger the callback to the display sub-system to render the
    // display and fetch the new pointer to be used for the lynx
    // display buffer for the forthcoming frame
-   if(mpDisplayCallback) mpDisplayBits=(*mpDisplayCallback)(mDisplayCallbackObject);
+   if(mpDisplayCallback) mpDisplayBits = mpDisplayCallback(mDisplayCallbackObject);
 
    // Reinitialise the screen buffer pointer
    // Make any necessary adjustment for rotation

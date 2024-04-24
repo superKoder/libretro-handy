@@ -164,6 +164,8 @@ enum
    MIKIE_PIXEL_FORMAT_32BPP,
 };
 
+#include <functional>
+
 #include <blip/Stereo_Buffer.h>
 
 typedef Blip_Synth<blip_good_quality, 256 * 4> Synth;
@@ -171,6 +173,8 @@ typedef Blip_Synth<blip_good_quality, 256 * 4> Synth;
 class CMikie : public CLynxBase
 {
    public:
+      using DisplayCallback = std::function<UBYTE *(ULONG)>;
+
       CMikie(CSystem& parent);
       ~CMikie();
 
@@ -194,7 +198,7 @@ class CMikie : public CLynxBase
       void	ComLynxTxLoopback(int data);
       void	ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref);
 
-      void	DisplaySetAttributes(ULONG rotate, ULONG format, ULONG pitch, UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref);
+      void	DisplaySetAttributes(ULONG rotate, ULONG format, ULONG pitch, CMikie::DisplayCallback callback, ULONG objref);
 
       void	BlowOut(void);
 
@@ -435,9 +439,9 @@ class CMikie : public CLynxBase
       ULONG		mDisplayRotate;
       ULONG		mDisplayFormat;
       ULONG		mDisplayPitch;
-      UBYTE*		(*mpDisplayCallback)(ULONG objref);
       ULONG		mDisplayCallbackObject;
 
+      CMikie::DisplayCallback mpDisplayCallback;
 
       // State within GetLfsrNext()
    

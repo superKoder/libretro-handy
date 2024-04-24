@@ -17,7 +17,7 @@ ifeq ($(FRONTEND_SUPPORTS_XRGB8888), 1)
    FLAGS += -DFRONTEND_SUPPORTS_XRGB8888
 endif
 
-CXXFLAGS += -std=c++14
+CXXFLAGS += -std=c++17
 
 SOURCES_CXX := \
    $(CORE_DIR)/lynx/lynxdec.cpp \
@@ -30,6 +30,7 @@ SOURCES_CXX := \
    $(CORE_DIR)/lynx/susie.cpp \
    $(CORE_DIR)/lynx/system.cpp \
    $(CORE_DIR)/lynx/eeprom.cpp \
+   $(CORE_DIR)/multi/multi_system.cpp \
    $(CORE_DIR)/libretro/libretro.cpp \
    $(CORE_DIR)/blip/Blip_Buffer.cpp \
    $(CORE_DIR)/blip/Stereo_Buffer.cpp

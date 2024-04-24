@@ -1255,7 +1255,7 @@ bool retro_load_game(const struct retro_game_info *info)
    }
 
    lynx          = new CSystem(content_path, content_data, content_size,
-         bios_file, !bios_found, eeprom_file);
+         bios_file, !bios_found, eeprom_file, 1);
    lynx->mAudioEnabled = true;
    soundBuffer   = (int16_t *)&lynx->mAudioBuffer;
    btn_map       = btn_map_no_rot;

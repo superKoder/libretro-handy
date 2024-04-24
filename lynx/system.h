@@ -127,7 +127,8 @@ class CSystem
               ULONG gamesize,
               const char *romfile,
               bool useEmu,
-              const char *eepromfile);
+              const char *eepromfile, 
+              int player_id);
       ~CSystem();
     void SaveEEPROM(void);
       uint8_t ID = 0;
@@ -207,7 +208,13 @@ class CSystem
 
       // Mikey system interfacing
 
-      void   DisplaySetAttributes(ULONG rotate,ULONG format,ULONG pitch, UBYTE* (*callback)(ULONG objref),ULONG objref) { mMikie->DisplaySetAttributes(rotate, format, pitch, callback, objref); };
+      void   DisplaySetAttributes(ULONG rotate, 
+                                  ULONG format,
+                                  ULONG pitch, 
+                                  CMikie::DisplayCallback callback, 
+                                  ULONG objref) { 
+         mMikie->DisplaySetAttributes(rotate, format, pitch, callback, objref); 
+      };
 
       void   ComLynxCable(int status) { mMikie->ComLynxCable(status); };
       void   ComLynxRxData(int data)  { mMikie->ComLynxRxData(data); };
